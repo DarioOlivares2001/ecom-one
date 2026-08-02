@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { performance } from "node:perf_hooks";
 import { MOCK_PRODUCTS } from "@/lib/utils/mock-products";
 import { ProductsClient } from "./ProductsClient";
-import type { Product } from "@/lib/supabase/types";
+import type { Product } from "@/lib/db/types";
+import { listActiveProducts } from "@/lib/db/repositories";
 
 export const metadata: Metadata = {
   title: "Productos",
@@ -20,38 +21,29 @@ function approxPayloadBytes(value: unknown): number {
 }
 
 async function getProducts(): Promise<Product[]> {
-  let supabaseResponded = false;
+  let dbResponded = false;
 
   try {
     const queryStart = performance.now();
-    const { createClient } = await import("@/lib/supabase/server");
-    const supabase = createClient();
-    const { data } = await supabase
-      .from("products")
-      .select(
-        "id, slug, name, price, compare_at_price, stock, images, category, active, created_at, has_variants, variants, discount_enabled, discount_max_percent, discount_steps, discount_label"
-      )
-      .eq("active", true)
-      .order("created_at", { ascending: false });
+    const rows = await listActiveProducts();
     const queryMs = performance.now() - queryStart;
-    supabaseResponded = true;
+    dbResponded = true;
 
-    const rows = Array.isArray(data) ? (data as unknown[]) : [];
     if (perfEnabled()) {
-      console.log(`${PERF_PREFIX} supabase query ms:`, Math.round(queryMs));
+      console.log(`${PERF_PREFIX} db query ms:`, Math.round(queryMs));
       console.log(`${PERF_PREFIX} products count:`, rows.length);
       console.log(`${PERF_PREFIX} payload approx bytes:`, approxPayloadBytes(rows));
     }
 
-    if (data?.length) {
-      return data as Product[];
+    if (rows.length) {
+      return rows;
     }
   } catch {
     // DB not configured yet
   }
 
-  if (perfEnabled() && !supabaseResponded) {
-    console.log(`${PERF_PREFIX} supabase query ms: skipped (fallback mock)`);
+  if (perfEnabled() && !dbResponded) {
+    console.log(`${PERF_PREFIX} db query ms: skipped (fallback mock)`);
     console.log(`${PERF_PREFIX} products count:`, MOCK_PRODUCTS.length);
     console.log(`${PERF_PREFIX} payload approx bytes:`, approxPayloadBytes(MOCK_PRODUCTS));
   }

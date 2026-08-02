@@ -1,7 +1,12 @@
 import type { Metadata } from "next";
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
-import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  countReviewsByStatus,
+  hideApprovedReview,
+  listReviewsByStatusWithProduct,
+  updateReviewStatus,
+} from "@/lib/db/repositories";
 import { formatPrice } from "@/lib/utils/format";
 import { ReviewActions } from "./ReviewActions";
 
@@ -11,34 +16,16 @@ export const revalidate = 0;
 
 type ReviewStatusTab = "pending" | "approved" | "rejected";
 
-type AdminReviewRow = {
-  id: string;
-  product_id: string;
-  author_name: string;
-  author_email: string | null;
-  rating: number;
-  comment: string | null;
-  created_at: string;
-  photo_url: string | null;
-  active: boolean;
-  status: ReviewStatusTab;
-  products: { name: string | null; price: number | null } | { name: string | null; price: number | null }[] | null;
-};
-
 async function approveReviewAction(id: string): Promise<{ error?: string }> {
   "use server";
   const trimmedId = id.trim();
   if (!trimmedId) return { error: "ID de reseña inválido." };
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (createAdminClient() as any)
-    .from("reviews")
-    .update({ status: "approved", active: true })
-    .eq("id", trimmedId);
-
-  if (error) {
-    console.error("[admin/resenas] Error aprobando reseña:", error.message);
-    return { error: error.message };
+  try {
+    await updateReviewStatus(trimmedId, "approved", { active: true });
+  } catch (error) {
+    console.error("[admin/resenas] Error aprobando reseña:", error);
+    return { error: "No se pudo aprobar la reseña." };
   }
 
   revalidatePath("/admin/resenas");
@@ -51,15 +38,11 @@ async function rejectReviewAction(id: string): Promise<{ error?: string }> {
   const trimmedId = id.trim();
   if (!trimmedId) return { error: "ID de reseña inválido." };
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (createAdminClient() as any)
-    .from("reviews")
-    .update({ status: "rejected", active: false })
-    .eq("id", trimmedId);
-
-  if (error) {
-    console.error("[admin/resenas] Error rechazando reseña:", error.message);
-    return { error: error.message };
+  try {
+    await updateReviewStatus(trimmedId, "rejected", { active: false });
+  } catch (error) {
+    console.error("[admin/resenas] Error rechazando reseña:", error);
+    return { error: "No se pudo rechazar la reseña." };
   }
 
   revalidatePath("/admin/resenas");
@@ -71,16 +54,11 @@ async function hideApprovedReviewAction(id: string): Promise<{ error?: string }>
   const trimmedId = id.trim();
   if (!trimmedId) return { error: "ID de reseña inválido." };
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (createAdminClient() as any)
-    .from("reviews")
-    .update({ active: false })
-    .eq("id", trimmedId)
-    .eq("status", "approved");
-
-  if (error) {
-    console.error("[admin/resenas] Error ocultando reseña aprobada:", error.message);
-    return { error: error.message };
+  try {
+    await hideApprovedReview(trimmedId);
+  } catch (error) {
+    console.error("[admin/resenas] Error ocultando reseña aprobada:", error);
+    return { error: "No se pudo ocultar la reseña." };
   }
 
   revalidatePath("/admin/resenas");
@@ -88,46 +66,25 @@ async function hideApprovedReviewAction(id: string): Promise<{ error?: string }>
 }
 
 async function getReviewsByStatus(status: ReviewStatusTab) {
-  const { data, error } = await createAdminClient()
-    .from("reviews")
-    .select(
-      `
-      id,
-      product_id,
-      author_name,
-      author_email,
-      rating,
-      comment,
-      photo_url,
-      created_at,
-      status,
-      active,
-      products(name, price)
-    `
-    )
-    .eq("status", status)
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    console.error("[admin/resenas] Error cargando reseñas:", error.message);
+  try {
+    const rows = await listReviewsByStatusWithProduct(status);
+    return rows.map((row) => ({
+      ...row,
+      products: { name: row.product_name, price: row.product_price },
+    }));
+  } catch (error) {
+    console.error("[admin/resenas] Error cargando reseñas:", error);
     return [];
   }
-
-  return Array.isArray(data) ? (data as AdminReviewRow[]) : [];
 }
 
 async function getReviewCounts() {
-  const supabase = createAdminClient();
-  const [pendingRes, approvedRes, rejectedRes] = await Promise.all([
-    supabase.from("reviews").select("id", { count: "exact", head: true }).eq("status", "pending"),
-    supabase.from("reviews").select("id", { count: "exact", head: true }).eq("status", "approved"),
-    supabase.from("reviews").select("id", { count: "exact", head: true }).eq("status", "rejected"),
-  ]);
-  return {
-    pending: pendingRes.count ?? 0,
-    approved: approvedRes.count ?? 0,
-    rejected: rejectedRes.count ?? 0,
-  };
+  try {
+    return await countReviewsByStatus();
+  } catch (error) {
+    console.error("[admin/resenas] Error cargando conteos de reseñas:", error);
+    return { pending: 0, approved: 0, rejected: 0 };
+  }
 }
 
 function starsBadge(rating: number) {

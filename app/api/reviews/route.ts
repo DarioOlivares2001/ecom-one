@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
+import { createReview, getProductById } from "@/lib/db/repositories";
 import { sendReviewNotification } from "@/lib/email/sendReviewNotification";
 
 const bodySchema = z.object({
@@ -25,84 +25,30 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Datos de reseña incompletos." }, { status: 400 });
     }
 
-    const supabase = createClient();
-    const fullInsert = {
-      product_id: payload.product_id,
-      author_name: payload.author_name,
-      author_email: payload.author_email?.trim() || null,
-      rating: payload.rating,
-      comment: payload.comment,
-      photo_url: payload.photo_url?.trim() || null,
-      verified: false,
-      active: false,
-      status: "pending",
-    };
-    let { error } = await supabase
-      .from("reviews")
-      .insert(fullInsert as never);
-    let savedReview = !error;
-
-    if (error) {
-      console.error("[api/reviews] Error insert reviews (full payload):", {
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code,
-        payloadKeys: Object.keys(fullInsert),
+    try {
+      await createReview({
+        product_id: payload.product_id,
+        author_name: payload.author_name,
+        author_email: payload.author_email?.trim() || null,
+        rating: payload.rating,
+        comment: payload.comment,
+        photo_url: payload.photo_url?.trim() || null,
+        verified: false,
+        active: false,
+        status: "pending",
       });
-
-      const missingColumnError =
-        /column .* does not exist/i.test(error.message ?? "") ||
-        error.code === "42703";
-
-      if (missingColumnError) {
-        const legacyInsert = {
-          product_id: payload.product_id,
-          author_name: payload.author_name,
-          rating: payload.rating,
-          comment: payload.comment,
-          verified: false,
-          active: false,
-        };
-        const retry = await supabase
-          .from("reviews")
-          .insert(legacyInsert as never);
-        if (!retry.error) {
-          savedReview = true;
-          error = null;
-        } else {
-          error = retry.error;
-        }
-        if (error) {
-          console.error("[api/reviews] Error insert reviews (legacy fallback):", {
-            message: error.message,
-            details: error.details,
-            hint: error.hint,
-            code: error.code,
-            payloadKeys: Object.keys(legacyInsert),
-          });
-        }
-      }
-
-      if (!savedReview) {
-        return NextResponse.json(
-          { error: error?.message || "No se pudo guardar la reseña." },
-          { status: 500 }
-        );
-      }
+    } catch (error) {
+      console.error("[api/reviews] Error insertando reseña:", error);
+      return NextResponse.json({ error: "No se pudo guardar la reseña." }, { status: 500 });
     }
 
     try {
       console.log("[email] trigger notificación reseña pendiente");
-      const { data: productRow } = await supabase
-        .from("products")
-        .select("id,name")
-        .eq("id", payload.product_id)
-        .maybeSingle();
+      const productRow = await getProductById(payload.product_id);
       await sendReviewNotification({
         product: {
           id: payload.product_id,
-          name: (productRow as { name?: string | null } | null)?.name ?? null,
+          name: productRow?.name ?? null,
         },
         author: payload.author_name,
         authorEmail: payload.author_email?.trim() || null,

@@ -1,7 +1,7 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";
-import { reviews } from "@/lib/db/schema";
+import { products, reviews } from "@/lib/db/schema";
 import type { Review } from "@/lib/db/types";
 
 type ReviewRow = typeof reviews.$inferSelect;
@@ -36,6 +36,52 @@ export async function listActiveReviewsByProductId(productId: string): Promise<R
 export async function listReviewsForAdmin(): Promise<Review[]> {
   const rows = await db.select().from(reviews).orderBy(desc(reviews.createdAt));
   return rows.map(mapReview);
+}
+
+export interface AdminReviewWithProduct extends Review {
+  product_name: string | null;
+  product_price: number | null;
+}
+
+/** Reseñas por estado, con nombre/precio actual del producto (para /admin/resenas). */
+export async function listReviewsByStatusWithProduct(
+  status: Review["status"]
+): Promise<AdminReviewWithProduct[]> {
+  const rows = await db
+    .select({
+      review: reviews,
+      productName: products.name,
+      productPrice: products.price,
+    })
+    .from(reviews)
+    .leftJoin(products, eq(reviews.productId, products.id))
+    .where(eq(reviews.status, status))
+    .orderBy(desc(reviews.createdAt));
+
+  return rows.map(({ review, productName, productPrice }) => ({
+    ...mapReview(review),
+    product_name: productName ?? null,
+    product_price: productPrice ?? null,
+  }));
+}
+
+export async function countReviewsByStatus(): Promise<{
+  pending: number;
+  approved: number;
+  rejected: number;
+}> {
+  const rows = await db
+    .select({ status: reviews.status, total: count() })
+    .from(reviews)
+    .groupBy(reviews.status);
+
+  const result = { pending: 0, approved: 0, rejected: 0 };
+  for (const row of rows) {
+    if (row.status === "pending" || row.status === "approved" || row.status === "rejected") {
+      result[row.status] = Number(row.total);
+    }
+  }
+  return result;
 }
 
 export async function getReviewById(id: string): Promise<Review | null> {
@@ -94,4 +140,12 @@ export async function updateReviewStatus(
 
 export async function deleteReview(id: string): Promise<void> {
   await db.delete(reviews).where(eq(reviews.id, id));
+}
+
+/** Oculta una reseña que esté aprobada (no-op si no está en ese estado). */
+export async function hideApprovedReview(id: string): Promise<void> {
+  await db
+    .update(reviews)
+    .set({ active: false, updatedAt: new Date() })
+    .where(and(eq(reviews.id, id), eq(reviews.status, "approved")));
 }

@@ -2,7 +2,13 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ProductClient } from "./ProductClient";
 import { getMockProduct, MOCK_PRODUCTS } from "@/lib/utils/mock-products";
-import type { Database, Product, Review } from "@/lib/supabase/types";
+import type { Product, ProductVariant, Review } from "@/lib/db/types";
+import {
+  getActiveProductBySlug,
+  listActiveProductsExcluding,
+  listActiveReviewsByProductId,
+  listActiveVariantsByProductId,
+} from "@/lib/db/repositories";
 import { pickProductUpsellSuggestions } from "@/lib/product/upsell";
 
 interface Props {
@@ -12,21 +18,12 @@ interface Props {
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-type ProductVariant = Database["public"]["Tables"]["product_variants"]["Row"];
-
 // ─── Data fetching ────────────────────────────────────────────────────────────
 
 async function getProduct(slug: string): Promise<Product | null> {
   try {
-    const { createClient } = await import("@/lib/supabase/server");
-    const supabase = createClient();
-    const { data } = await supabase
-      .from("products")
-      .select("*")
-      .eq("slug", slug)
-      .eq("active", true)
-      .single();
-    if (data) return data as Product;
+    const product = await getActiveProductBySlug(slug);
+    if (product) return product;
   } catch {
     // DB not configured yet
   }
@@ -35,15 +32,7 @@ async function getProduct(slug: string): Promise<Product | null> {
 
 async function getProductVariants(productId: string): Promise<ProductVariant[]> {
   try {
-    const { createClient } = await import("@/lib/supabase/server");
-    const supabase = createClient();
-    const { data } = await supabase
-      .from("product_variants")
-      .select("*")
-      .eq("product_id", productId)
-      .eq("active", true)
-      .order("position", { ascending: true });
-    return (data ?? []) as ProductVariant[];
+    return await listActiveVariantsByProductId(productId);
   } catch {
     return [];
   }
@@ -51,16 +40,8 @@ async function getProductVariants(productId: string): Promise<ProductVariant[]> 
 
 async function getReviews(productId: string): Promise<Review[]> {
   try {
-    const { createClient } = await import("@/lib/supabase/server");
-    const supabase = createClient();
-    const { data } = await supabase
-      .from("reviews")
-      .select("*")
-      .eq("product_id", productId)
-      .eq("active", true)
-      .eq("status", "approved")
-      .order("created_at", { ascending: false });
-    return (data ?? []) as Review[];
+    const rows = await listActiveReviewsByProductId(productId);
+    return rows.filter((r) => r.status === "approved");
   } catch {
     return [];
   }
@@ -68,16 +49,8 @@ async function getReviews(productId: string): Promise<Review[]> {
 
 async function getUpsellCandidates(excludeId: string): Promise<Product[]> {
   try {
-    const { createClient } = await import("@/lib/supabase/server");
-    const supabase = createClient();
-    const { data } = await supabase
-      .from("products")
-      .select("*")
-      .eq("active", true)
-      .gt("stock", 0)
-      .neq("id", excludeId)
-      .limit(30);
-    if (data?.length) return data as Product[];
+    const candidates = await listActiveProductsExcluding(excludeId, 30);
+    if (candidates.length) return candidates;
   } catch {
     // DB not configured yet
   }

@@ -1,5 +1,6 @@
 import type { BentoItem } from "@/components/store/BentoGrid";
-import type { Product } from "@/lib/supabase/types";
+import type { Product } from "@/lib/db/types";
+import { listActiveProducts } from "@/lib/db/repositories";
 import { normalizeProductCategory } from "@/lib/product/categories";
 
 const MAX_INDIVIDUALS = 4;
@@ -183,18 +184,8 @@ export function productsToLandingBentoItems(products: Product[]): BentoItem[] {
 
 export async function loadActiveProductsCatalog(): Promise<Product[]> {
   try {
-    const { createClient } = await import("@/lib/supabase/server");
-    const supabase = createClient();
-    const { data } = await supabase
-      .from("products")
-      .select(
-        "id, slug, name, description, price, compare_at_price, cost_price, stock, images, category, tags, variants, has_variants, options, meta_title, meta_desc, active, created_at, updated_at"
-      )
-      .eq("active", true)
-      .order("created_at", { ascending: false })
-      .limit(120);
-
-    if (data?.length) return data as Product[];
+    const rows = await listActiveProducts({ limit: 120 });
+    if (rows.length) return rows;
   } catch {
     /* DB no configurada */
   }

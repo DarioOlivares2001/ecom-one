@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
+import { listUpsellEligibleProducts } from "@/lib/db/repositories";
 import {
   pickCheckoutRecommendations,
   type CheckoutRecRow,
@@ -21,21 +21,15 @@ export async function POST(req: Request) {
     }
     const { excludeProductIds, cartProductNames } = parsed.data;
 
-    const supabase = createClient();
-    const { data, error } = await supabase
-      .from("products")
-      .select(
-        "id, slug, name, price, cost_price, compare_at_price, images, stock, category, tags, has_variants, discount_enabled, discount_max_percent, discount_steps"
-      )
-      .eq("active", true)
-      .gt("stock", 0)
-      .eq("has_variants", false);
-
-    if (error || !data?.length) {
+    let rows: CheckoutRecRow[];
+    try {
+      rows = await listUpsellEligibleProducts();
+    } catch {
       return NextResponse.json({ products: [] });
     }
-
-    const rows = data as CheckoutRecRow[];
+    if (!rows.length) {
+      return NextResponse.json({ products: [] });
+    }
     const { title, products } = pickCheckoutRecommendations(
       rows,
       excludeProductIds,

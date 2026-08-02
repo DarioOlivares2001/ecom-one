@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, ne, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";
 import { products } from "@/lib/db/schema";
@@ -37,12 +37,13 @@ export function mapProduct(row: ProductRow): Product {
 }
 
 /** Solo productos activos y no eliminados (catálogo público). */
-export async function listActiveProducts(): Promise<Product[]> {
-  const rows = await db
+export async function listActiveProducts(options?: { limit?: number }): Promise<Product[]> {
+  const query = db
     .select()
     .from(products)
     .where(and(eq(products.active, true), isNull(products.deletedAt)))
     .orderBy(desc(products.createdAt));
+  const rows = options?.limit ? await query.limit(options.limit) : await query;
   return rows.map(mapProduct);
 }
 
@@ -77,6 +78,52 @@ export async function listProductsForAdmin(options?: {
     .from(products)
     .where(options?.includeDeleted ? undefined : isNull(products.deletedAt))
     .orderBy(desc(products.createdAt));
+  return rows.map(mapProduct);
+}
+
+/** Candidatos activos con stock, excluyendo un producto, para upsells/recomendaciones. */
+export async function listActiveProductsExcluding(
+  excludeId: string,
+  limit: number
+): Promise<Product[]> {
+  const rows = await db
+    .select()
+    .from(products)
+    .where(
+      and(
+        eq(products.active, true),
+        isNull(products.deletedAt),
+        gt(products.stock, 0),
+        ne(products.id, excludeId)
+      )
+    )
+    .limit(limit);
+  return rows.map(mapProduct);
+}
+
+/** Candidatos elegibles para upsell del carrito/checkout: activos, con stock, sin variantes. */
+export async function listUpsellEligibleProducts(options?: {
+  requireDiscount?: boolean;
+  limit?: number;
+}): Promise<Product[]> {
+  const conditions = [
+    eq(products.active, true),
+    isNull(products.deletedAt),
+    gt(products.stock, 0),
+    eq(products.hasVariants, false),
+  ];
+  if (options?.requireDiscount) {
+    conditions.push(eq(products.discountEnabled, true));
+    conditions.push(sql`${products.discountMaxPercent} > 0`);
+  }
+
+  const query = db
+    .select()
+    .from(products)
+    .where(and(...conditions))
+    .orderBy(desc(products.createdAt));
+
+  const rows = options?.limit ? await query.limit(options.limit) : await query;
   return rows.map(mapProduct);
 }
 

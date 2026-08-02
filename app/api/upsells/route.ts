@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { listUpsellEligibleProducts } from "@/lib/db/repositories";
 import {
   FALLBACK_RECOMMENDATION_TITLE,
   pickCheckoutRecommendations,
@@ -20,7 +20,6 @@ export async function POST(request: Request) {
       ? body.cartProductNames.filter(Boolean)
       : [];
 
-    const supabase = createClient();
     // Filtro server-side: SOLO productos elegibles para upsell.
     // - active = true
     // - stock > 0
@@ -28,27 +27,15 @@ export async function POST(request: Request) {
     // - discount_enabled = true
     // - discount_max_percent > 0
     // compare_at_price NO se usa para generar ofertas de upsell.
-    const { data, error } = await supabase
-      .from("products")
-      .select(
-        "id,slug,name,price,compare_at_price,cost_price,stock,images,active,has_variants,category,tags,discount_enabled,discount_max_percent,discount_steps"
-      )
-      .eq("active", true)
-      .gt("stock", 0)
-      .eq("has_variants", false)
-      .eq("discount_enabled", true)
-      .gt("discount_max_percent", 0)
-      .order("created_at", { ascending: false })
-      .limit(40);
-
-    if (error) {
+    let rows: CheckoutRecRow[];
+    try {
+      rows = await listUpsellEligibleProducts({ requireDiscount: true, limit: 40 });
+    } catch (dbError) {
       if (process.env.NODE_ENV === "development") {
-        console.warn("[upsells candidates] error en query", { error: error.message });
+        console.warn("[upsells candidates] error en query", dbError);
       }
       return NextResponse.json({ offers: [] }, { status: 200 });
     }
-
-    const rows = (data ?? []) as CheckoutRecRow[];
     const totalCandidates = rows.length;
     // Excluir productos ya en el carrito (regla del usuario).
     const inCart = new Set(cartProductIds);
