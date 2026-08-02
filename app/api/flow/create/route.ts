@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
-import type { Database, Json } from "@/lib/supabase/types";
+import type { Json } from "@/lib/db/types";
+import type { OrderInsertInput } from "@/lib/db/repositories/orders";
+import { createOrder, updateOrder, updateOrderByOrderNumber } from "@/lib/db/repositories/orders";
 import { upsertClienteFromOrder } from "@/lib/clientes/upsertClienteFromOrder";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { sendOrderNotification } from "@/lib/email/sendOrderNotification";
 import { getPublicSiteUrl } from "@/lib/site-url";
 import { getStoreSettings } from "@/lib/store-settings/getStoreSettings";
@@ -60,7 +61,7 @@ function buildOrderInsertPayload(
   total: number,
   status: "awaiting_payment" | "pending" | "paid",
   clientNetworkInfo: { ip: string | null; userAgent: string | null }
-): Database["public"]["Tables"]["orders"]["Insert"] {
+): OrderInsertInput {
   const referencia =
     typeof customer.referencia === "string" ? customer.referencia.trim() : "";
   return {
@@ -162,10 +163,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Datos incompletos" }, { status: 400 });
     }
 
-    const admin = createAdminClient();
     const settings = await getStoreSettings();
     const clientNetworkInfo = extractClientNetworkInfo(request);
-    const priced = await recalculateCheckoutOrder(admin, body.items);
+    const priced = await recalculateCheckoutOrder(body.items);
     if (!priced.ok) {
       return NextResponse.json({ error: priced.error }, { status: priced.status });
     }
@@ -222,25 +222,20 @@ export async function POST(request: NextRequest) {
         clientNetworkInfo
       );
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (admin as any)
-        .from("orders")
-        .insert(mockPayload)
-        .select("id, order_number")
-        .single();
-
-      if (error) {
-        console.error("[Flow mock] Error creando orden:", error.message);
+      let data: { id: string; order_number: number };
+      try {
+        const created = await createOrder(mockPayload);
+        data = { id: created.id, order_number: created.order_number };
+      } catch (error) {
+        console.error("[Flow mock] Error creando orden:", error);
         return NextResponse.json({ error: "Error al crear la orden de prueba" }, { status: 500 });
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const orderNumber = (data as any).order_number as number;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const orderId = (data as any).id as string;
+      const orderNumber = data.order_number;
+      const orderId = data.id;
 
       // Descontar stock atómicamente (paid en mock = pago confirmado).
-      const stockRes = await confirmPaidOrderAndDecrementStock(admin, orderId);
+      const stockRes = await confirmPaidOrderAndDecrementStock(orderId);
       if (!stockRes.ok) {
         console.error("[Flow mock][stock] error descontando stock", {
           orderNumber,
@@ -261,7 +256,6 @@ export async function POST(request: NextRequest) {
       }
       try {
         await upsertClienteFromOrder(
-          admin,
           {
             name: customer.name ?? "",
             email: customer.email,
@@ -281,16 +275,12 @@ export async function POST(request: NextRequest) {
       }
       const mockToken = `MOCK-${orderNumber}`;
       const displayCode = generateDisplayCode(orderNumber, settings.order_number_offset);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (admin as any)
-        .from("orders")
-        .update({ display_code: displayCode })
-        .eq("id", orderId);
+      await updateOrder(orderId, { display_code: displayCode });
       console.info(`[Flow mock] Orden #${orderNumber} (${displayCode}) creada con status 'paid'`);
       logPersistedOrderAfterInsert({
         order_number: orderNumber,
         subtotal: mockPayload.subtotal,
-        shipping_cost: mockPayload.shipping_cost,
+        shipping_cost: mockPayload.shipping_cost ?? 0,
         total: mockPayload.total,
         items,
       });
@@ -356,23 +346,19 @@ export async function POST(request: NextRequest) {
 
     // ── Live mode — insert pending order, then call Flow ──────────────────────
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: orderData, error: orderError } = await (admin as any)
-      .from("orders")
-      .insert(orderPayload)
-      .select("order_number")
-      .single();
-
-    if (orderError || orderData == null) {
-      console.error("[Flow create] Error creando orden pending:", orderError?.message);
+    let orderData: { order_number: number };
+    try {
+      const created = await createOrder(orderPayload);
+      orderData = { order_number: created.order_number };
+    } catch (orderError) {
+      console.error("[Flow create] Error creando orden pending:", orderError);
       return NextResponse.json(
         { error: "No se pudo crear la orden antes de iniciar el pago." },
         { status: 500 }
       );
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const orderNumberLive = (orderData as any).order_number as number;
+    const orderNumberLive = orderData.order_number;
     if (!Number.isFinite(orderNumberLive)) {
       return NextResponse.json(
         { error: "No se pudo crear la orden antes de iniciar el pago." },
@@ -383,14 +369,13 @@ export async function POST(request: NextRequest) {
     logPersistedOrderAfterInsert({
       order_number: orderNumberLive,
       subtotal: orderPayload.subtotal,
-      shipping_cost: orderPayload.shipping_cost,
+      shipping_cost: orderPayload.shipping_cost ?? 0,
       total: orderPayload.total,
       items,
     });
 
     try {
       await upsertClienteFromOrder(
-        admin,
         {
           name: customer.name ?? "",
           email: customer.email,
@@ -459,15 +444,11 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (admin as any)
-        .from("orders")
-        .update({
-          flow_token: flowData.token,
-          flow_order: String(flowData.flowOrder),
-          display_code: displayCodeLive,
-        })
-        .eq("order_number", orderNumberLive);
+      await updateOrderByOrderNumber(orderNumberLive, {
+        flow_token: flowData.token,
+        flow_order: String(flowData.flowOrder),
+        display_code: displayCodeLive,
+      });
     } catch (e) {
       console.error("[flow-create] fallo UPDATE display_code/flow_token", {
         orderNumber: orderNumberLive,

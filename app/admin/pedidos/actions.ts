@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { updateOrder } from "@/lib/db/repositories/orders";
 import { confirmPaidOrderAndDecrementStock } from "@/lib/orders/confirmPaidAndDecrementStock";
 
 const VALID = ["pending", "paid", "preparing", "shipped", "delivered", "cancelled"] as const;
@@ -14,20 +14,17 @@ export async function updateOrderStatusAction(
   const normalizedStatus = status === "ready_to_ship" ? "shipped" : status;
   if (!VALID.includes(normalizedStatus as OrderStatus)) return { error: "Estado inválido." };
 
-  const admin = createAdminClient();
-
   if (normalizedStatus === "paid") {
-    // La RPC marca status='paid' Y descuenta stock en la misma transacción atómica.
+    // La función nativa marca status='paid' Y descuenta stock en la misma transacción atómica.
     // No hacemos UPDATE previo: si falla, la orden queda en su estado original sin tocar.
-    const stockRes = await confirmPaidOrderAndDecrementStock(admin, id);
+    const stockRes = await confirmPaidOrderAndDecrementStock(id);
     if (!stockRes.ok) return { error: `No se pudo confirmar el pago: ${stockRes.error}` };
   } else {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (admin as any)
-      .from("orders")
-      .update({ status: normalizedStatus })
-      .eq("id", id);
-    if (error) return { error: error.message };
+    try {
+      await updateOrder(id, { status: normalizedStatus as OrderStatus });
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : "No se pudo actualizar la orden." };
+    }
   }
 
   revalidatePath("/admin/pedidos");

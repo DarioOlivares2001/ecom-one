@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";
 import { orders } from "@/lib/db/schema";
@@ -43,6 +43,11 @@ export async function getOrderByFlowToken(flowToken: string): Promise<Order | nu
 
 export async function getOrderByDisplayCode(displayCode: string): Promise<Order | null> {
   const rows = await db.select().from(orders).where(eq(orders.displayCode, displayCode)).limit(1);
+  return rows[0] ? mapOrder(rows[0]) : null;
+}
+
+export async function getOrderByOrderNumber(orderNumber: number): Promise<Order | null> {
+  const rows = await db.select().from(orders).where(eq(orders.orderNumber, orderNumber)).limit(1);
   return rows[0] ? mapOrder(rows[0]) : null;
 }
 
@@ -106,7 +111,7 @@ export async function createOrder(input: OrderInsertInput): Promise<Order> {
   return mapOrder(row);
 }
 
-export async function updateOrder(id: string, input: OrderUpdateInput): Promise<Order | null> {
+function buildUpdateValues(input: OrderUpdateInput): Record<string, unknown> {
   const values: Record<string, unknown> = {};
   if (input.status !== undefined) values.status = input.status;
   if (input.customer_name !== undefined) values.customerName = input.customer_name;
@@ -124,13 +129,49 @@ export async function updateOrder(id: string, input: OrderUpdateInput): Promise<
   if (input.client_ip_address !== undefined) values.clientIpAddress = input.client_ip_address;
   if (input.client_user_agent !== undefined) values.clientUserAgent = input.client_user_agent;
   if (input.stock_discounted !== undefined) values.stockDiscounted = input.stock_discounted;
+  return values;
+}
 
+export async function updateOrder(id: string, input: OrderUpdateInput): Promise<Order | null> {
+  const values = buildUpdateValues(input);
   if (Object.keys(values).length === 0) return getOrderById(id);
 
   const [row] = await db
     .update(orders)
     .set({ ...values, updatedAt: new Date() })
     .where(eq(orders.id, id))
+    .returning();
+  return row ? mapOrder(row) : null;
+}
+
+export async function updateOrderByOrderNumber(
+  orderNumber: number,
+  input: OrderUpdateInput
+): Promise<Order | null> {
+  const values = buildUpdateValues(input);
+  if (Object.keys(values).length === 0) return getOrderByOrderNumber(orderNumber);
+
+  const [row] = await db
+    .update(orders)
+    .set({ ...values, updatedAt: new Date() })
+    .where(eq(orders.orderNumber, orderNumber))
+    .returning();
+  return row ? mapOrder(row) : null;
+}
+
+/** Actualiza condicionalmente solo si la orden está actualmente en `expectedStatus` (guard anti-carrera). */
+export async function updateOrderIfStatus(
+  id: string,
+  expectedStatus: Order["status"],
+  input: OrderUpdateInput
+): Promise<Order | null> {
+  const values = buildUpdateValues(input);
+  if (Object.keys(values).length === 0) return getOrderById(id);
+
+  const [row] = await db
+    .update(orders)
+    .set({ ...values, updatedAt: new Date() })
+    .where(and(eq(orders.id, id), eq(orders.status, expectedStatus)))
     .returning();
   return row ? mapOrder(row) : null;
 }

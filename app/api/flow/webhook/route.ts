@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
-import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  getOrderByDisplayCode,
+  getOrderById,
+  getOrderByOrderNumber,
+  updateOrderIfStatus,
+} from "@/lib/db/repositories/orders";
 import { confirmPaidOrderAndDecrementStock } from "@/lib/orders/confirmPaidAndDecrementStock";
 import { revalidateAfterStockChange } from "@/lib/orders/revalidateAfterStockChange";
 import { sendOrderNotification } from "@/lib/email/sendOrderNotification";
@@ -79,35 +84,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ received: true }, { status: 200 });
     }
 
-    const admin = createAdminClient();
-
     // ── 2. Buscar la orden ──────────────────────────────────────────────────
     // Busca por display_code (formato nuevo SO...).
     // Fallback a order_number parseado desde "TG-X" para órdenes en vuelo
     // creadas con el formato anterior. Eliminar fallback cuando no queden pendientes viejas.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let { data: orderRow, error: orderErr } = await (admin as any)
-      .from("orders")
-      .select("id, status, stock_discounted")
-      .eq("display_code", commerceOrder)
-      .maybeSingle();
+    let orderRow;
+    try {
+      orderRow = await getOrderByDisplayCode(commerceOrder);
 
-    if (!orderErr && !orderRow && commerceOrder.startsWith("TG-")) {
-      const legacyNum = Number(commerceOrder.slice(3));
-      if (Number.isFinite(legacyNum) && legacyNum > 0) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ({ data: orderRow, error: orderErr } = await (admin as any)
-          .from("orders")
-          .select("id, status, stock_discounted")
-          .eq("order_number", legacyNum)
-          .maybeSingle());
+      if (!orderRow && commerceOrder.startsWith("TG-")) {
+        const legacyNum = Number(commerceOrder.slice(3));
+        if (Number.isFinite(legacyNum) && legacyNum > 0) {
+          orderRow = await getOrderByOrderNumber(legacyNum);
+        }
       }
-    }
-
-    if (orderErr) {
+    } catch (orderErr) {
       console.error("[flow-webhook] error consultando orden", {
         commerceOrder,
-        error: orderErr.message,
+        error: orderErr,
       });
       return NextResponse.json({ received: true }, { status: 200 });
     }
@@ -129,12 +123,7 @@ export async function POST(request: NextRequest) {
       // Guard .eq("status", "awaiting_payment") evita pisar una orden ya paid si este
       // webhook de rechazo llega tarde (después del webhook de pago exitoso).
       console.log("[flow-webhook] pago no completado, marcando cancelled", { commerceOrder, statusCode });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (admin as any)
-        .from("orders")
-        .update({ status: "cancelled" })
-        .eq("id", orderRow.id)
-        .eq("status", "awaiting_payment");
+      await updateOrderIfStatus(orderRow.id, "awaiting_payment", { status: "cancelled" });
       return NextResponse.json({ received: true }, { status: 200 });
     }
 
@@ -144,7 +133,7 @@ export async function POST(request: NextRequest) {
     }
 
     // ── 3. Descontar stock (idempotente) ───────────────────────────────────
-    const stockRes = await confirmPaidOrderAndDecrementStock(admin, orderRow.id as string);
+    const stockRes = await confirmPaidOrderAndDecrementStock(orderRow.id);
     if (!stockRes.ok) {
       console.error("[flow-webhook] error descontando stock", {
         commerceOrder,
@@ -164,18 +153,9 @@ export async function POST(request: NextRequest) {
     // Emails admin + cliente, y Purchase de Meta CAPI — solo en el primer
     // webhook de pago (idempotente vía alreadyDiscounted).
     if (!stockRes.alreadyDiscounted) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let fullOrder: any = null;
+      let fullOrder: Awaited<ReturnType<typeof getOrderById>> = null;
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data } = await (admin as any)
-          .from("orders")
-          .select(
-            "order_number, display_code, customer_name, customer_email, customer_phone, items, subtotal, shipping_cost, total, shipping_address, client_ip_address, client_user_agent"
-          )
-          .eq("id", orderRow.id)
-          .single();
-        fullOrder = data;
+        fullOrder = await getOrderById(orderRow.id);
       } catch (fetchError) {
         console.error("[flow-webhook] error leyendo la orden para notificaciones:", fetchError);
       }
@@ -194,7 +174,9 @@ export async function POST(request: NextRequest) {
               ciudad: addr.ciudad ?? "",
               region: addr.region ?? "",
             },
-            items: Array.isArray(fullOrder.items) ? fullOrder.items : [],
+            items: (Array.isArray(fullOrder.items) ? fullOrder.items : []) as unknown as Parameters<
+              typeof sendOrderNotification
+            >[0]["items"],
             subtotal: fullOrder.subtotal,
             shippingCost: fullOrder.shipping_cost,
             total: fullOrder.total,

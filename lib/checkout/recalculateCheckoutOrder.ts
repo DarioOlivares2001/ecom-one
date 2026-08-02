@@ -1,5 +1,9 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "@/lib/supabase/types";
+import type { Product, ProductVariant } from "@/lib/db/types";
+import { getProductsByIds } from "@/lib/db/repositories/products";
+import { db } from "@/lib/db/client";
+import { productVariants as productVariantsTable } from "@/lib/db/schema";
+import { sql } from "drizzle-orm";
+import { mapProductVariant } from "@/lib/db/repositories/productVariants";
 import {
   getApplicableProductDiscount,
   getDiscountedUnitPrice,
@@ -10,7 +14,7 @@ import { computeShippingCostClp } from "@/lib/checkout/shipping";
 import { getStoreSettings } from "@/lib/store-settings/getStoreSettings";
 
 type ProductRow = Pick<
-  Database["public"]["Tables"]["products"]["Row"],
+  Product,
   | "id"
   | "name"
   | "price"
@@ -25,9 +29,18 @@ type ProductRow = Pick<
 >;
 
 type VariantRow = Pick<
-  Database["public"]["Tables"]["product_variants"]["Row"],
+  ProductVariant,
   "id" | "product_id" | "title" | "price" | "stock" | "active" | "image_url"
 >;
+
+async function getVariantsByIds(ids: string[]): Promise<VariantRow[]> {
+  if (ids.length === 0) return [];
+  const rows = await db
+    .select()
+    .from(productVariantsTable)
+    .where(sql`${productVariantsTable.id} = ANY(${ids})`);
+  return rows.map(mapProductVariant);
+}
 
 export type OrderLineDiscountSource = "upsell" | "quantity";
 
@@ -198,11 +211,10 @@ function buildOrderLine(params: {
 }
 
 /**
- * Recalcula ítems, subtotal, envío y total desde Supabase (admin).
+ * Recalcula ítems, subtotal, envío y total desde la base (server-side).
  * No usa precios del cliente como fuente de verdad, salvo referencia `expected_unit_price` en upsell.
  */
 export async function recalculateCheckoutOrder(
-  admin: SupabaseClient<Database>,
   rawItems: unknown
 ): Promise<RecalculateCheckoutOrderResult> {
   const parsed = parseIncomingLines(rawItems);
@@ -217,20 +229,14 @@ export async function recalculateCheckoutOrder(
   const merged = mergeLines(parsed);
   const productIds = Array.from(new Set(merged.map((m) => m.productId)));
 
-  const { data: productsRaw, error: pErr } = await admin
-    .from("products")
-    .select(
-      "id,name,price,stock,active,has_variants,images,discount_enabled,discount_max_percent,discount_steps,discount_label"
-    )
-    .in("id", productIds)
-    .eq("active", true);
-
-  if (pErr) {
-    console.error("[checkout-price] error cargando productos", pErr.message);
+  let products: ProductRow[];
+  try {
+    products = (await getProductsByIds(productIds)).filter((p) => p.active);
+  } catch (pErr) {
+    console.error("[checkout-price] error cargando productos", pErr);
     return { ok: false, error: "No pudimos validar tu carrito. Intenta de nuevo.", status: 500 };
   }
 
-  const products = (productsRaw ?? []) as unknown as ProductRow[];
   const productMap = new Map(products.map((p) => [p.id, p]));
   if (productMap.size !== productIds.length) {
     return {
@@ -246,16 +252,13 @@ export async function recalculateCheckoutOrder(
 
   let variantMap = new Map<string, VariantRow>();
   if (variantIds.length > 0) {
-    const { data: variantsRaw, error: vErr } = await admin
-      .from("product_variants")
-      .select("id,product_id,title,price,stock,active,image_url")
-      .in("id", variantIds);
-
-    if (vErr) {
-      console.error("[checkout-price] error cargando variantes", vErr.message);
+    let variants: VariantRow[];
+    try {
+      variants = await getVariantsByIds(variantIds);
+    } catch (vErr) {
+      console.error("[checkout-price] error cargando variantes", vErr);
       return { ok: false, error: "No pudimos validar las variantes del carrito.", status: 500 };
     }
-    const variants = (variantsRaw ?? []) as unknown as VariantRow[];
     variantMap = new Map(variants.map((v) => [v.id, v]));
     if (variantMap.size !== variantIds.length) {
       return {
