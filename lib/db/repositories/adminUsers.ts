@@ -76,6 +76,34 @@ export async function createAdminUser(input: AdminUserInsertInput): Promise<Admi
   return mapAdminUser(row);
 }
 
+/** Crea el admin si el email no existe, o actualiza password/role/active si ya existe (script de seed). */
+export async function upsertAdminUserByEmail(input: {
+  email: string;
+  password_hash: string;
+  role: AdminUser["role"];
+  active: boolean;
+}): Promise<AdminUser> {
+  const [row] = await db
+    .insert(adminUsers)
+    .values({
+      email: input.email,
+      passwordHash: input.password_hash,
+      role: input.role,
+      active: input.active,
+    })
+    .onConflictDoUpdate({
+      target: adminUsers.email,
+      set: {
+        passwordHash: input.password_hash,
+        role: input.role,
+        active: input.active,
+        updatedAt: new Date(),
+      },
+    })
+    .returning();
+  return mapAdminUser(row);
+}
+
 export async function updateAdminUser(
   id: string,
   input: AdminUserUpdateInput

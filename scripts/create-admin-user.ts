@@ -1,6 +1,5 @@
 import dotenv from "dotenv";
 import { hash } from "bcryptjs";
-import { createAdminClient } from "../lib/supabase/admin";
 
 dotenv.config({ path: ".env.local" });
 dotenv.config();
@@ -12,10 +11,8 @@ function getArg(name: string): string | undefined {
 }
 
 async function main() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
-  if (!supabaseUrl || !serviceRoleKey) {
-    console.error("Faltan variables NEXT_PUBLIC_SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY en .env.local");
+  if (!process.env.DATABASE_URL?.trim()) {
+    console.error("Falta DATABASE_URL en .env.local (conexión a Neon).");
     process.exit(1);
   }
 
@@ -29,24 +26,20 @@ async function main() {
     console.error("O define ADMIN_SEED_EMAIL y ADMIN_SEED_PASSWORD temporalmente.");
     process.exit(1);
   }
+  if (role !== "owner" && role !== "admin" && role !== "operator") {
+    console.error(`Rol inválido: "${role}". Debe ser owner, admin u operator.`);
+    process.exit(1);
+  }
 
   const password_hash = await hash(password, 12);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const admin = createAdminClient() as any;
-  const { error } = await admin.from("admin_users").upsert(
-    {
-      email,
-      password_hash,
-      role,
-      active: true,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "email" }
-  );
+  // Import diferido: recién acá se resuelve DATABASE_URL (ya validado arriba).
+  const { upsertAdminUserByEmail } = await import("../lib/db/repositories/adminUsers");
 
-  if (error) {
-    console.error("[create-admin-user] error:", error.message);
+  try {
+    await upsertAdminUserByEmail({ email, password_hash, role, active: true });
+  } catch (error) {
+    console.error("[create-admin-user] error:", error instanceof Error ? error.message : error);
     process.exit(1);
   }
 
@@ -54,4 +47,3 @@ async function main() {
 }
 
 void main();
-
