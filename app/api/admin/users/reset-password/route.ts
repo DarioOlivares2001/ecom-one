@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { hash } from "bcryptjs";
 import { z } from "zod";
 import { getAdminSessionFromCookies } from "@/lib/admin/session";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { updateAdminUser } from "@/lib/db/repositories/adminUsers";
 
 const schema = z.object({
   id: z.string().uuid(),
@@ -31,17 +31,9 @@ export async function POST(request: Request) {
 
   const password_hash = await hash(parsed.data.password, 12);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const admin = createAdminClient() as any;
-  const { error } = await admin
-    .from("admin_users")
-    .update({
-      password_hash,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", parsed.data.id);
-
-  if (error) {
+  try {
+    await updateAdminUser(parsed.data.id, { password_hash });
+  } catch {
     return NextResponse.json({ error: "No se pudo resetear la contraseña." }, { status: 500 });
   }
 

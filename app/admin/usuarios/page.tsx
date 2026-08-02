@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getAdminSessionFromCookies } from "@/lib/admin/session";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { listAdminUsers } from "@/lib/db/repositories/adminUsers";
 import { AdminUsersClient } from "./AdminUsersClient";
 
 export const metadata: Metadata = { title: "Usuarios admin — Admin" };
@@ -14,14 +14,10 @@ export default async function AdminUsuariosPage() {
   if (!session) redirect("/admin/login");
   if (session.role !== "owner") redirect("/admin/dashboard");
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const admin = createAdminClient() as any;
-  const { data, error } = await admin
-    .from("admin_users")
-    .select("id,email,role,active,last_login_at,created_at")
-    .order("created_at", { ascending: false });
-
-  if (error) {
+  let data;
+  try {
+    data = await listAdminUsers();
+  } catch {
     return (
       <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
         No se pudieron cargar los usuarios admin.
@@ -37,7 +33,7 @@ export default async function AdminUsuariosPage() {
           Gestiona accesos administrativos, roles y estado de activación.
         </p>
       </div>
-      <AdminUsersClient initialUsers={(data ?? []) as never} />
+      <AdminUsersClient initialUsers={data as never} />
     </div>
   );
 }

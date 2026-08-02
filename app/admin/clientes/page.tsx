@@ -1,12 +1,11 @@
 import type { Metadata } from "next";
-import { createAdminClient } from "@/lib/supabase/admin";
-import type { Cliente } from "@/lib/supabase/types";
+import { listClientesForAdmin } from "@/lib/db/repositories/clientes";
+import type { Cliente } from "@/lib/db/types";
 import { formatPrice } from "@/lib/utils/format";
 
 export const metadata: Metadata = { title: "Clientes — Admin" };
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-/** Asegura variables de entorno del rol de servicio en runtime Node (no Edge). */
 export const runtime = "nodejs";
 
 type AdminClienteRow = Pick<
@@ -15,44 +14,9 @@ type AdminClienteRow = Pick<
 >;
 
 async function getClientes(): Promise<{ clientes: AdminClienteRow[]; error: string | null }> {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
-
-  if (!url || !serviceRoleKey) {
-    console.error("[admin-clientes] error", {
-      reason: "faltan variables de entorno",
-      hasUrl: Boolean(url),
-      hasServiceRoleKey: Boolean(serviceRoleKey),
-      hint: "Configura SUPABASE_SERVICE_ROLE_KEY (no uses la anon key).",
-    });
-    return {
-      clientes: [],
-      error: "No se pudieron cargar los clientes desde Supabase.",
-    };
-  }
-
   try {
-    const supabase = createAdminClient();
-
-    const { data, error } = await supabase
-      .from("clientes")
-      .select("id, nombre, email, telefono, comuna, total_orders, total_spent, last_order_at")
-      .order("last_order_at", { ascending: false });
-
-    if (error) {
-      console.error("[admin-clientes] error", {
-        message: error.message,
-        code: error.code,
-        details: error.details,
-        hint: error.hint,
-      });
-      return {
-        clientes: [],
-        error: "No se pudieron cargar los clientes desde Supabase.",
-      };
-    }
-
-    return { clientes: data ?? [], error: null };
+    const data = await listClientesForAdmin();
+    return { clientes: data, error: null };
   } catch (err) {
     console.error("[admin-clientes] error", { phase: "excepción", err });
     return {

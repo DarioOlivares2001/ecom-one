@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { and, count, eq, ne, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";
 import { adminUsers } from "@/lib/db/schema";
@@ -37,6 +37,19 @@ export async function getAdminUserById(id: string): Promise<AdminUser | null> {
 export async function listAdminUsers(): Promise<AdminUser[]> {
   const rows = await db.select().from(adminUsers).orderBy(sql`${adminUsers.createdAt} desc`);
   return rows.map(mapAdminUser);
+}
+
+/** Cuenta owners activos, excluyendo opcionalmente un id (para el guard "no dejar la tienda sin owner"). */
+export async function countActiveOwners(excludeId?: string): Promise<number> {
+  const rows = await db
+    .select({ value: count() })
+    .from(adminUsers)
+    .where(
+      excludeId
+        ? and(eq(adminUsers.role, "owner"), eq(adminUsers.active, true), ne(adminUsers.id, excludeId))
+        : and(eq(adminUsers.role, "owner"), eq(adminUsers.active, true))
+    );
+  return rows[0]?.value ?? 0;
 }
 
 export interface AdminUserInsertInput {

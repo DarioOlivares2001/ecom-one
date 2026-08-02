@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { compare } from "bcryptjs";
 import { z } from "zod";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { getAdminUserByEmail, updateAdminUser } from "@/lib/db/repositories/adminUsers";
 import { setAdminSessionCookie } from "@/lib/admin/session";
 
 const schema = z.object({
@@ -25,15 +25,10 @@ export async function POST(request: Request) {
   const email = parsed.data.email.trim().toLowerCase();
   const password = parsed.data.password;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const admin = createAdminClient() as any;
-  const { data: row, error } = await admin
-    .from("admin_users")
-    .select("id,email,password_hash,role,active")
-    .eq("email", email)
-    .maybeSingle();
-
-  if (error) {
+  let row;
+  try {
+    row = await getAdminUserByEmail(email);
+  } catch {
     return NextResponse.json({ error: "No se pudo validar credenciales." }, { status: 500 });
   }
 
@@ -42,7 +37,7 @@ export async function POST(request: Request) {
       ? await compare(password, row.password_hash)
       : false;
 
-  if (!matchedAdmin) {
+  if (!matchedAdmin || !row) {
     return NextResponse.json({ error: "Email o contraseña incorrectos." }, { status: 401 });
   }
 
@@ -52,10 +47,7 @@ export async function POST(request: Request) {
     role: String(row.role ?? "admin"),
   });
 
-  await admin
-    .from("admin_users")
-    .update({ last_login_at: new Date().toISOString() })
-    .eq("id", row.id);
+  await updateAdminUser(row.id, { last_login_at: new Date().toISOString() });
 
   return NextResponse.json({ ok: true as const });
 }

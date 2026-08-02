@@ -52,7 +52,10 @@ export async function getClienteByResetToken(token: string): Promise<Cliente | n
 }
 
 export async function listClientesForAdmin(): Promise<Cliente[]> {
-  const rows = await db.select().from(clientes).orderBy(sql`${clientes.createdAt} desc`);
+  const rows = await db
+    .select()
+    .from(clientes)
+    .orderBy(sql`${clientes.lastOrderAt} desc nulls last`);
   return rows.map(mapCliente);
 }
 
