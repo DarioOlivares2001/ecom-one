@@ -81,6 +81,25 @@ export async function listProductsForAdmin(options?: {
   return rows.map(mapProduct);
 }
 
+export type AdminProductTab = "active" | "inactive" | "archived";
+
+/** Listado admin filtrado por pestaña: activos, inactivos (no eliminados) o archivados (soft-deleted). */
+export async function listProductsByAdminTab(tab: AdminProductTab): Promise<Product[]> {
+  const condition =
+    tab === "active"
+      ? and(eq(products.active, true), isNull(products.deletedAt))
+      : tab === "inactive"
+        ? and(eq(products.active, false), isNull(products.deletedAt))
+        : sql`${products.deletedAt} is not null`;
+
+  const rows = await db
+    .select()
+    .from(products)
+    .where(condition)
+    .orderBy(desc(products.createdAt));
+  return rows.map(mapProduct);
+}
+
 /** Candidatos activos con stock, excluyendo un producto, para upsells/recomendaciones. */
 export async function listActiveProductsExcluding(
   excludeId: string,
@@ -251,6 +270,22 @@ export async function softDeleteProduct(id: string): Promise<void> {
     .update(products)
     .set({ deletedAt: new Date(), active: false, updatedAt: new Date() })
     .where(eq(products.id, id));
+}
+
+export async function restoreProduct(id: string): Promise<void> {
+  await db
+    .update(products)
+    .set({ deletedAt: null, active: true, updatedAt: new Date() })
+    .where(eq(products.id, id));
+}
+
+/**
+ * Borrado físico. Solo para rollback best-effort de una creación de producto
+ * que falló a mitad de camino (ver createProductAction) — el resto del admin
+ * usa soft delete (softDeleteProduct).
+ */
+export async function deleteProductHard(id: string): Promise<void> {
+  await db.delete(products).where(eq(products.id, id));
 }
 
 export async function decrementProductStock(id: string, quantity: number): Promise<void> {

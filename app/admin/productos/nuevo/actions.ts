@@ -2,6 +2,17 @@
 
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  createProduct,
+  deleteProductHard,
+  restoreProduct,
+  softDeleteProduct,
+  updateProduct,
+} from "@/lib/db/repositories/products";
+import {
+  createProductVariants,
+  deleteVariantsByProductId,
+} from "@/lib/db/repositories/productVariants";
 import { normalizeProductCategory } from "@/lib/product/categories";
 import {
   parseVolumeDiscountFromFormData,
@@ -156,30 +167,28 @@ export async function createProductAction(
   const sectionsParsed = parseProductSectionsFromFormData(formData);
   if (!sectionsParsed.ok) return { error: sectionsParsed.error };
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: productData, error } = await (supabase as any)
-    .from("products")
-    .insert({
-    name: (formData.get("name") as string).trim(),
-    slug: (formData.get("slug") as string).trim(),
-    description: (formData.get("description") as string) || null,
-    price: basePrice,
-    compare_at_price: baseCompareAt,
-    cost_price: hasVariants ? null : costPrice,
-    stock: baseStock,
-    category: normalizedCategory || null,
-    images,
-    variants: hasVariants ? null : variants,
-    has_variants: hasVariants,
-    options: hasVariants ? options : null,
-    active: formData.get("active") === "true",
-    product_sections: sectionsParsed.data,
-    ...volumeFields,
-  })
-    .select("id, slug")
-    .single();
-
-  if (error) return { error: error.message };
+  let productData: { id: string; slug: string };
+  try {
+    productData = await createProduct({
+      name: (formData.get("name") as string).trim(),
+      slug: (formData.get("slug") as string).trim(),
+      description: (formData.get("description") as string) || null,
+      price: basePrice,
+      compare_at_price: baseCompareAt,
+      cost_price: hasVariants ? null : costPrice,
+      stock: baseStock,
+      category: normalizedCategory || null,
+      images,
+      variants: hasVariants ? null : variants,
+      has_variants: hasVariants,
+      options: hasVariants ? options : null,
+      active: formData.get("active") === "true",
+      product_sections: sectionsParsed.data,
+      ...volumeFields,
+    });
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "No se pudo crear el producto." };
+  }
 
   if (hasVariants) {
     const variantInserts = variantRows.map((row) => ({
@@ -196,16 +205,17 @@ export async function createProductAction(
       position: Number(row.position ?? 0),
     }));
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error: variantError } = await (supabase as any)
-      .from("product_variants")
-      .insert(variantInserts);
-
-    if (variantError) {
+    try {
+      await createProductVariants(variantInserts);
+    } catch (variantError) {
       // Best-effort rollback to avoid orphan products in this flow.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (supabase as any).from("products").delete().eq("id", productData.id);
-      return { error: variantError.message };
+      await deleteProductHard(productData.id);
+      return {
+        error:
+          variantError instanceof Error
+            ? variantError.message
+            : "No se pudieron crear las variantes.",
+      };
     }
   }
 
@@ -365,34 +375,39 @@ export async function updateProductAction(
   const sectionsParsed = parseProductSectionsFromFormData(formData);
   if (!sectionsParsed.ok) return { error: sectionsParsed.error };
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (supabase as any).from("products").update({
-    name: (formData.get("name") as string).trim(),
-    slug: (formData.get("slug") as string).trim(),
-    description: (formData.get("description") as string) || null,
-    price: basePrice,
-    compare_at_price: baseCompareAt,
-    cost_price: hasVariants ? null : costPrice,
-    stock: baseStock,
-    category: normalizedCategory || null,
-    images,
-    variants: hasVariants ? null : variants,
-    has_variants: hasVariants,
-    options: hasVariants ? options : null,
-    active: formData.get("active") === "true",
-    product_sections: sectionsParsed.data,
-    ...volumeFields,
-  }).eq("id", id);
-
-  if (error) return { error: error.message };
+  try {
+    await updateProduct(id, {
+      name: (formData.get("name") as string).trim(),
+      slug: (formData.get("slug") as string).trim(),
+      description: (formData.get("description") as string) || null,
+      price: basePrice,
+      compare_at_price: baseCompareAt,
+      cost_price: hasVariants ? null : costPrice,
+      stock: baseStock,
+      category: normalizedCategory || null,
+      images,
+      variants: hasVariants ? null : variants,
+      has_variants: hasVariants,
+      options: hasVariants ? options : null,
+      active: formData.get("active") === "true",
+      product_sections: sectionsParsed.data,
+      ...volumeFields,
+    });
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "No se pudo actualizar el producto." };
+  }
 
   if (hasVariants) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error: deleteVariantsError } = await (supabase as any)
-      .from("product_variants")
-      .delete()
-      .eq("product_id", id);
-    if (deleteVariantsError) return { error: deleteVariantsError.message };
+    try {
+      await deleteVariantsByProductId(id);
+    } catch (deleteVariantsError) {
+      return {
+        error:
+          deleteVariantsError instanceof Error
+            ? deleteVariantsError.message
+            : "No se pudieron reemplazar las variantes.",
+      };
+    }
 
     const variantInserts = variantRows.map((row) => ({
       product_id: id,
@@ -409,14 +424,18 @@ export async function updateProductAction(
       position: Number(row.position ?? 0),
     }));
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error: variantInsertError } = await (supabase as any)
-      .from("product_variants")
-      .insert(variantInserts);
-    if (variantInsertError) return { error: variantInsertError.message };
+    try {
+      await createProductVariants(variantInserts);
+    } catch (variantInsertError) {
+      return {
+        error:
+          variantInsertError instanceof Error
+            ? variantInsertError.message
+            : "No se pudieron crear las variantes.",
+      };
+    }
   } else {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase as any).from("product_variants").delete().eq("product_id", id);
+    await deleteVariantsByProductId(id);
   }
 
   revalidatePath("/admin/productos");
@@ -429,25 +448,21 @@ export async function updateProductAction(
 }
 
 export async function archiveProductAction(id: string): Promise<{ error?: string }> {
-  const supabase = createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (supabase as any)
-    .from("products")
-    .update({ active: false, deleted_at: new Date().toISOString() })
-    .eq("id", id);
-  if (error) return { error: error.message };
+  try {
+    await softDeleteProduct(id);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "No se pudo archivar el producto." };
+  }
   revalidatePath("/admin/productos");
   return {};
 }
 
 export async function restoreProductAction(id: string): Promise<{ error?: string }> {
-  const supabase = createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (supabase as any)
-    .from("products")
-    .update({ active: true, deleted_at: null })
-    .eq("id", id);
-  if (error) return { error: error.message };
+  try {
+    await restoreProduct(id);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "No se pudo restaurar el producto." };
+  }
   revalidatePath("/admin/productos");
   return {};
 }

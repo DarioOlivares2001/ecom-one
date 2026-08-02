@@ -66,6 +66,32 @@ export interface ProductVariantInsertInput {
 
 export type ProductVariantUpdateInput = Partial<Omit<ProductVariantInsertInput, "product_id">>;
 
+/** Inserción en lote (un solo round-trip) para el guardado de producto con variantes. */
+export async function createProductVariants(
+  inputs: ProductVariantInsertInput[]
+): Promise<ProductVariant[]> {
+  if (inputs.length === 0) return [];
+  const rows = await db
+    .insert(productVariants)
+    .values(
+      inputs.map((input) => ({
+        productId: input.product_id,
+        title: input.title,
+        optionValues: input.option_values ?? {},
+        price: input.price,
+        compareAtPrice: input.compare_at_price ?? null,
+        costPrice: input.cost_price ?? null,
+        stock: input.stock ?? 0,
+        imageUrl: input.image_url ?? null,
+        badgeText: input.badge_text ?? null,
+        active: input.active ?? true,
+        position: input.position ?? 0,
+      }))
+    )
+    .returning();
+  return rows.map(mapProductVariant);
+}
+
 export async function createProductVariant(
   input: ProductVariantInsertInput
 ): Promise<ProductVariant> {

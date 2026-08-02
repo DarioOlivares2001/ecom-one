@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
 import { Plus, Pencil, PackageOpen } from "lucide-react";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { listProductsByAdminTab, type AdminProductTab } from "@/lib/db/repositories";
 import { normalizeProductCategory } from "@/lib/product/categories";
 import { formatPrice } from "@/lib/utils/format";
 import {
@@ -15,25 +15,11 @@ export const metadata: Metadata = { title: "Productos — Admin" };
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-type Tab = "active" | "inactive" | "archived";
+type Tab = AdminProductTab;
 
 async function getProductsByTab(tab: Tab) {
   try {
-    const supabase = createAdminClient();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let query = (supabase as any)
-      .from("products")
-      .select(
-        "id, name, slug, price, compare_at_price, stock, category, images, active, deleted_at, created_at"
-      )
-      .order("created_at", { ascending: false });
-
-    if (tab === "active")   query = query.eq("active", true).is("deleted_at", null);
-    if (tab === "inactive") query = query.eq("active", false).is("deleted_at", null);
-    if (tab === "archived") query = query.not("deleted_at", "is", null);
-
-    const { data } = await query;
-    return data ?? [];
+    return await listProductsByAdminTab(tab);
   } catch {
     return [];
   }
