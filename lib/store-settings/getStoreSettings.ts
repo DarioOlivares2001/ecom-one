@@ -1,5 +1,5 @@
-import { createAdminClient } from "@/lib/supabase/admin";
-import type { StoreSettings } from "@/lib/supabase/types";
+import { getStoreSettingsRow } from "@/lib/db/repositories/storeSettings";
+import type { StoreSettings } from "@/lib/db/types";
 
 export interface StoreSettingsView {
   store_name: string;
@@ -178,9 +178,9 @@ function normalizeSettings(row: StoreSettings | null): StoreSettingsView {
     logo_square_url: row.logo_square_url ?? DEFAULT_STORE_SETTINGS.logo_square_url,
     favicon_url: row.favicon_url ?? DEFAULT_STORE_SETTINGS.favicon_url,
     apple_icon_url:
-      (row as Record<string, unknown>).apple_icon_url?.toString?.() ?? DEFAULT_STORE_SETTINGS.apple_icon_url,
+      (row as unknown as Record<string, unknown>).apple_icon_url?.toString?.() ?? DEFAULT_STORE_SETTINGS.apple_icon_url,
     pwa_icon_512_url:
-      (row as Record<string, unknown>).pwa_icon_512_url?.toString?.() ?? DEFAULT_STORE_SETTINGS.pwa_icon_512_url,
+      (row as unknown as Record<string, unknown>).pwa_icon_512_url?.toString?.() ?? DEFAULT_STORE_SETTINGS.pwa_icon_512_url,
     brand_text_color: row.brand_text_color ?? row.primary_color ?? DEFAULT_STORE_SETTINGS.brand_text_color,
     navbar_background_color:
       row.navbar_background_color ??
@@ -219,59 +219,59 @@ function normalizeSettings(row: StoreSettings | null): StoreSettingsView {
     theme_manual_override: row.theme_manual_override ?? DEFAULT_STORE_SETTINGS.theme_manual_override,
     support_whatsapp: row.support_whatsapp ?? DEFAULT_STORE_SETTINGS.support_whatsapp,
     contact_email:
-      (row as Record<string, unknown>).contact_email?.toString?.() ??
+      (row as unknown as Record<string, unknown>).contact_email?.toString?.() ??
       DEFAULT_STORE_SETTINGS.contact_email,
     support_instagram: row.support_instagram ?? DEFAULT_STORE_SETTINGS.support_instagram,
     support_tiktok: row.support_tiktok ?? DEFAULT_STORE_SETTINGS.support_tiktok,
     hero_banner_desktop_url:
-      (row as Record<string, unknown>).hero_banner_desktop_url?.toString?.() ??
-      (row as Record<string, unknown>).banner_desktop_url?.toString?.() ??
+      (row as unknown as Record<string, unknown>).hero_banner_desktop_url?.toString?.() ??
+      (row as unknown as Record<string, unknown>).banner_desktop_url?.toString?.() ??
       DEFAULT_STORE_SETTINGS.hero_banner_desktop_url,
     hero_banner_mobile_url:
-      (row as Record<string, unknown>).hero_banner_mobile_url?.toString?.() ??
-      (row as Record<string, unknown>).banner_mobile_url?.toString?.() ??
+      (row as unknown as Record<string, unknown>).hero_banner_mobile_url?.toString?.() ??
+      (row as unknown as Record<string, unknown>).banner_mobile_url?.toString?.() ??
       DEFAULT_STORE_SETTINGS.hero_banner_mobile_url,
-    hero_overlay_mode: asHeroOverlayMode((row as Record<string, unknown>).hero_overlay_mode),
+    hero_overlay_mode: asHeroOverlayMode((row as unknown as Record<string, unknown>).hero_overlay_mode),
     hero_overlay_opacity: asHeroOverlayOpacity(
-      (row as Record<string, unknown>).hero_overlay_opacity as number | string | null | undefined,
+      (row as unknown as Record<string, unknown>).hero_overlay_opacity as number | string | null | undefined,
       DEFAULT_STORE_SETTINGS.hero_overlay_opacity
     ),
     enable_whatsapp_checkout: asBoolean(
-      (row as Record<string, unknown>).enable_whatsapp_checkout,
+      (row as unknown as Record<string, unknown>).enable_whatsapp_checkout,
       DEFAULT_STORE_SETTINGS.enable_whatsapp_checkout
     ),
     order_number_offset: asNonNegativeInt(
-      (row as Record<string, unknown>).order_number_offset,
+      (row as unknown as Record<string, unknown>).order_number_offset,
       DEFAULT_STORE_SETTINGS.order_number_offset
     ),
     shipping_cost_clp: asNonNegativeInt(
-      (row as Record<string, unknown>).shipping_cost_clp,
+      (row as unknown as Record<string, unknown>).shipping_cost_clp,
       DEFAULT_STORE_SETTINGS.shipping_cost_clp
     ),
     shipping_free_threshold_clp: asNonNegativeInt(
-      (row as Record<string, unknown>).shipping_free_threshold_clp,
+      (row as unknown as Record<string, unknown>).shipping_free_threshold_clp,
       DEFAULT_STORE_SETTINGS.shipping_free_threshold_clp
     ),
     enable_whatsapp_fab: asBoolean(
-      (row as Record<string, unknown>).enable_whatsapp_fab,
+      (row as unknown as Record<string, unknown>).enable_whatsapp_fab,
       DEFAULT_STORE_SETTINGS.enable_whatsapp_fab
     ),
-    meta_pixel_id: (row as Record<string, unknown>).meta_pixel_id?.toString?.() ?? DEFAULT_STORE_SETTINGS.meta_pixel_id,
+    meta_pixel_id: (row as unknown as Record<string, unknown>).meta_pixel_id?.toString?.() ?? DEFAULT_STORE_SETTINGS.meta_pixel_id,
     meta_capi_access_token:
-      (row as Record<string, unknown>).meta_capi_access_token?.toString?.() ??
+      (row as unknown as Record<string, unknown>).meta_capi_access_token?.toString?.() ??
       DEFAULT_STORE_SETTINGS.meta_capi_access_token,
     meta_pixel_enabled: asBoolean(
-      (row as Record<string, unknown>).meta_pixel_enabled,
+      (row as unknown as Record<string, unknown>).meta_pixel_enabled,
       DEFAULT_STORE_SETTINGS.meta_pixel_enabled
     ),
     meta_test_event_code:
-      (row as Record<string, unknown>).meta_test_event_code?.toString?.() ??
+      (row as unknown as Record<string, unknown>).meta_test_event_code?.toString?.() ??
       DEFAULT_STORE_SETTINGS.meta_test_event_code,
     clarity_project_id:
-      (row as Record<string, unknown>).clarity_project_id?.toString?.() ??
+      (row as unknown as Record<string, unknown>).clarity_project_id?.toString?.() ??
       DEFAULT_STORE_SETTINGS.clarity_project_id,
     clarity_enabled: asBoolean(
-      (row as Record<string, unknown>).clarity_enabled,
+      (row as unknown as Record<string, unknown>).clarity_enabled,
       DEFAULT_STORE_SETTINGS.clarity_enabled
     ),
   };
@@ -279,19 +279,7 @@ function normalizeSettings(row: StoreSettings | null): StoreSettingsView {
 
 export async function getStoreSettings(): Promise<StoreSettingsView> {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (createAdminClient() as any)
-      .from("store_settings")
-      .select("*")
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (error) {
-      console.error("[store_settings] Error leyendo configuración:", error.message);
-      return DEFAULT_STORE_SETTINGS;
-    }
-
+    const data = await getStoreSettingsRow();
     return normalizeSettings((data as StoreSettings | null) ?? null);
   } catch (error) {
     console.error("[store_settings] Excepción leyendo configuración:", error);

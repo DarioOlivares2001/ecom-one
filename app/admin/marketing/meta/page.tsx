@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { revalidatePath } from "next/cache";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { getStoreSettingsRow, upsertStoreSettings } from "@/lib/db/repositories/storeSettings";
 import { getStoreSettings } from "@/lib/store-settings/getStoreSettings";
 import { MetaMarketingForm } from "./MetaMarketingForm";
 
@@ -23,22 +23,19 @@ async function saveMetaSettingsAction(formData: FormData): Promise<SaveMetaResul
     return formData.get(field) === "true";
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabase = createAdminClient() as any;
-  const { data: existing } = await supabase
-    .from("store_settings")
-    .select("id")
-    .order("updated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (!existing?.id) {
+  const existing = await getStoreSettingsRow();
+  if (!existing) {
     return {
       error: "Primero guarda la configuración general en /admin/configuracion (crea la fila base de la tienda).",
     };
   }
 
-  const payload: Record<string, unknown> = {
+  const payload: {
+    meta_pixel_id: string;
+    meta_pixel_enabled: boolean;
+    meta_test_event_code: string;
+    meta_capi_access_token?: string;
+  } = {
     meta_pixel_id: read("meta_pixel_id"),
     meta_pixel_enabled: readBoolean("meta_pixel_enabled"),
     meta_test_event_code: read("meta_test_event_code"),
@@ -52,10 +49,13 @@ async function saveMetaSettingsAction(formData: FormData): Promise<SaveMetaResul
     payload.meta_capi_access_token = submittedToken;
   }
 
-  const { error } = await supabase.from("store_settings").update(payload).eq("id", existing.id);
-  if (error) {
-    console.error("[admin/marketing/meta] Error guardando store_settings:", error.message);
-    return { error: `No se pudo guardar: ${error.message}` };
+  try {
+    await upsertStoreSettings(payload);
+  } catch (error) {
+    console.error("[admin/marketing/meta] Error guardando store_settings:", error);
+    return {
+      error: `No se pudo guardar: ${error instanceof Error ? error.message : "error desconocido"}`,
+    };
   }
 
   revalidatePath("/admin/marketing");

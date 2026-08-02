@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { revalidatePath } from "next/cache";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { getStoreSettingsRow, upsertStoreSettings } from "@/lib/db/repositories/storeSettings";
 import {
   DEFAULT_STORE_SETTINGS,
   getStoreSettings,
@@ -109,44 +109,17 @@ async function saveSettingsAction(formData: FormData): Promise<{ error?: string;
   const submittedAppleIconUrl = read("apple_icon_url");
   const submittedPwaIconUrl = read("pwa_icon_512_url");
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabase = createAdminClient() as any;
-  const { data: existingRows } = await supabase
-    .from("store_settings")
-    .select(
-      "id,hero_banner_desktop_url,hero_banner_mobile_url,logo_url,logo_square_url,favicon_url,apple_icon_url,pwa_icon_512_url"
-    )
-    .order("updated_at", { ascending: false })
-    .limit(50);
+  // El índice único `uq_store_settings_singleton` garantiza a nivel de BD que
+  // nunca hay más de una fila, así que no hace falta limpiar duplicados acá.
+  const existing = await getStoreSettingsRow();
 
-  const existing = Array.isArray(existingRows) ? existingRows[0] : null;
-  const duplicateIds =
-    Array.isArray(existingRows) && existingRows.length > 1
-      ? existingRows.slice(1).map((r: { id: string }) => r.id).filter(Boolean)
-      : [];
-
-  if (duplicateIds.length > 0) {
-    await supabase.from("store_settings").delete().in("id", duplicateIds);
-  }
-
-  type PersistedAssetRow = {
-    hero_banner_desktop_url?: string | null;
-    hero_banner_mobile_url?: string | null;
-    logo_url?: string | null;
-    logo_square_url?: string | null;
-    favicon_url?: string | null;
-    apple_icon_url?: string | null;
-    pwa_icon_512_url?: string | null;
-  };
-  const existingAssets = existing as PersistedAssetRow | null;
-
-  const persistedDesktopUrl = submittedDesktopUrl || existingAssets?.hero_banner_desktop_url || "";
-  const persistedMobileUrl = submittedMobileUrl || existingAssets?.hero_banner_mobile_url || "";
-  const persistedLogoUrl = submittedLogoUrl || existingAssets?.logo_url || "";
-  const persistedLogoSquareUrl = submittedLogoSquareUrl || existingAssets?.logo_square_url || "";
-  const persistedFaviconUrl = submittedFaviconUrl || existingAssets?.favicon_url || "";
-  const persistedAppleIconUrl = submittedAppleIconUrl || existingAssets?.apple_icon_url || "";
-  const persistedPwaIconUrl = submittedPwaIconUrl || existingAssets?.pwa_icon_512_url || "";
+  const persistedDesktopUrl = submittedDesktopUrl || existing?.hero_banner_desktop_url || "";
+  const persistedMobileUrl = submittedMobileUrl || existing?.hero_banner_mobile_url || "";
+  const persistedLogoUrl = submittedLogoUrl || existing?.logo_url || "";
+  const persistedLogoSquareUrl = submittedLogoSquareUrl || existing?.logo_square_url || "";
+  const persistedFaviconUrl = submittedFaviconUrl || existing?.favicon_url || "";
+  const persistedAppleIconUrl = submittedAppleIconUrl || existing?.apple_icon_url || "";
+  const persistedPwaIconUrl = submittedPwaIconUrl || existing?.pwa_icon_512_url || "";
 
   const payload = {
     store_name: read("store_name") || DEFAULT_STORE_SETTINGS.store_name,
@@ -203,27 +176,20 @@ async function saveSettingsAction(formData: FormData): Promise<{ error?: string;
   console.log("[hero-config-save] desktop url payload:", payload.hero_banner_desktop_url || "(empty)");
   console.log("[hero-config-save] mobile url payload:", payload.hero_banner_mobile_url || "(empty)");
 
-  const operation = existing?.id
-    ? supabase.from("store_settings").update(payload).eq("id", existing.id)
-    : supabase.from("store_settings").insert(payload);
-
-  const { error } = await operation;
-  if (error) {
-    console.error("[admin/configuracion] Error guardando store_settings:", error.message);
-    return { error: `No se pudo guardar: ${error.message}` };
+  let savedRow;
+  try {
+    savedRow = await upsertStoreSettings(payload);
+  } catch (error) {
+    console.error("[admin/configuracion] Error guardando store_settings:", error);
+    return {
+      error: `No se pudo guardar: ${error instanceof Error ? error.message : "error desconocido"}`,
+    };
   }
-
-  const { data: savedRow, error: savedError } = await supabase
-    .from("store_settings")
-    .select("id,hero_banner_desktop_url,hero_banner_mobile_url")
-    .order("updated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (savedError) {
-    console.error("[hero-config-save] readback error", savedError.message);
-  } else {
-    console.log("[hero-config-save] saved settings", savedRow);
-  }
+  console.log("[hero-config-save] saved settings", {
+    id: savedRow.id,
+    hero_banner_desktop_url: savedRow.hero_banner_desktop_url,
+    hero_banner_mobile_url: savedRow.hero_banner_mobile_url,
+  });
 
   revalidatePath("/");
   revalidatePath("/admin");
