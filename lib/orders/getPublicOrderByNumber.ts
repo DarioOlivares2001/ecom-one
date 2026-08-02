@@ -1,4 +1,4 @@
-import { createAdminClient } from "@/lib/supabase/admin";
+import { getOrderByDisplayCodeAndEmail } from "@/lib/db/repositories/orders";
 
 /** Campos mínimos para la vista pública de seguimiento (sin id ni tokens de pago). */
 export type PublicOrderTracking = {
@@ -31,24 +31,22 @@ export async function getPublicOrderByDisplayCode(
   if (!normalizedEmail) return null;
 
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const admin = createAdminClient() as any;
-    const { data, error } = await admin
-      .from("orders")
-      .select(
-        "order_number, display_code, status, customer_name, customer_email, customer_phone, items, subtotal, shipping_cost, total, created_at"
-      )
-      .eq("display_code", code)
-      .ilike("customer_email", normalizedEmail)
-      .maybeSingle();
+    const order = await getOrderByDisplayCodeAndEmail(code, normalizedEmail);
+    if (!order) return null;
 
-    if (error) {
-      console.error("[seguimiento] getPublicOrderByDisplayCode", error.message);
-      return null;
-    }
-    if (!data) return null;
-
-    return data as PublicOrderTracking;
+    return {
+      order_number: order.order_number,
+      display_code: order.display_code,
+      status: order.status,
+      customer_name: order.customer_name,
+      customer_email: order.customer_email,
+      customer_phone: order.customer_phone,
+      items: order.items,
+      subtotal: order.subtotal,
+      shipping_cost: order.shipping_cost,
+      total: order.total,
+      created_at: order.created_at,
+    };
   } catch (e) {
     console.error("[seguimiento] getPublicOrderByDisplayCode excepción", e);
     return null;

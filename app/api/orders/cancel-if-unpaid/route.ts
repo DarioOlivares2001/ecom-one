@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { getOrderByOrderNumber, updateOrderIfStatus } from "@/lib/db/repositories/orders";
 
 const FLOW_API_URL = process.env.FLOW_API_URL ?? "https://sandbox.flow.cl/api";
 const FLOW_API_KEY = process.env.FLOW_API_KEY ?? "";
@@ -29,20 +29,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: "order inválido" }, { status: 400 });
     }
 
-    const admin = createAdminClient();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: orderRow, error: orderErr } = await (admin as any)
-      .from("orders")
-      .select("id, status, flow_token")
-      .eq("order_number", orderNumber)
-      .maybeSingle();
-
-    if (orderErr) {
-      console.error("[cancel-if-unpaid] error consultando orden", {
-        orderNumber,
-        error: orderErr.message,
-      });
-      return NextResponse.json({ ok: false, error: orderErr.message }, { status: 500 });
+    let orderRow;
+    try {
+      orderRow = await getOrderByOrderNumber(orderNumber);
+    } catch (orderErr) {
+      const message = orderErr instanceof Error ? orderErr.message : String(orderErr);
+      console.error("[cancel-if-unpaid] error consultando orden", { orderNumber, error: message });
+      return NextResponse.json({ ok: false, error: message }, { status: 500 });
     }
     if (!orderRow) {
       return NextResponse.json({ ok: true, action: "none", reason: "orden no encontrada" });
@@ -88,18 +81,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true, action: "none", reason: "paid" });
     }
 
-    // Guard .eq("status", "awaiting_payment") evita pisar una orden ya paid
-    // si hubo una carrera con el webhook real.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error: updateErr } = await (admin as any)
-      .from("orders")
-      .update({ status: "cancelled" })
-      .eq("id", orderRow.id)
-      .eq("status", "awaiting_payment");
-
-    if (updateErr) {
-      console.error("[cancel-if-unpaid] DB error", { error: updateErr.message, orderNumber });
-      return NextResponse.json({ ok: false, error: updateErr.message }, { status: 500 });
+    // Guard: solo actualiza si sigue en "awaiting_payment", evita pisar una
+    // orden ya paid si hubo una carrera con el webhook real.
+    try {
+      await updateOrderIfStatus(orderRow.id, "awaiting_payment", { status: "cancelled" });
+    } catch (updateErr) {
+      const message = updateErr instanceof Error ? updateErr.message : String(updateErr);
+      console.error("[cancel-if-unpaid] DB error", { error: message, orderNumber });
+      return NextResponse.json({ ok: false, error: message }, { status: 500 });
     }
 
     console.log("[cancel-if-unpaid] orden cancelada", { orderNumber, flowStatus });

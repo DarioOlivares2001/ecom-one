@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { getOrderById } from "@/lib/db/repositories/orders";
 import { OrderDetail } from "./OrderDetail";
 import { getStoreSettings } from "@/lib/store-settings/getStoreSettings";
 
@@ -8,13 +8,7 @@ export const metadata: Metadata = { title: "Detalle de pedido — Admin" };
 
 async function getOrder(id: string) {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data } = await (createAdminClient() as any)
-      .from("orders")
-      .select("*")
-      .eq("id", id)
-      .single();
-    return data ?? null;
+    return await getOrderById(id);
   } catch {
     return null;
   }

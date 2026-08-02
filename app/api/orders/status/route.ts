@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { getOrderByOrderNumber } from "@/lib/db/repositories/orders";
 
 export const dynamic = "force-dynamic";
 
@@ -10,18 +10,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const admin = createAdminClient();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (admin as any)
-      .from("orders")
-      .select("status, display_code, items")
-      .eq("order_number", orderNum)
-      .maybeSingle();
-
-    if (error) {
-      console.error("[orders/status] error consultando orden:", error.message);
-      return NextResponse.json({ error: "Error consultando orden" }, { status: 500 });
-    }
+    const data = await getOrderByOrderNumber(orderNum);
 
     if (!data) {
       return NextResponse.json({ error: "Orden no encontrada" }, { status: 404 });

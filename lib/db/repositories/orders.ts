@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";
 import { orders } from "@/lib/db/schema";
@@ -63,6 +63,114 @@ export async function listOrdersByEmail(email: string): Promise<Order[]> {
 export async function listOrdersForAdmin(): Promise<Order[]> {
   const rows = await db.select().from(orders).orderBy(desc(orders.createdAt));
   return rows.map(mapOrder);
+}
+
+/** Pedidos visibles en el listado admin: excluye `awaiting_payment` (carritos abandonados/en pago). */
+export async function listOrdersForAdminExcludingAwaitingPayment(): Promise<Order[]> {
+  const rows = await db
+    .select()
+    .from(orders)
+    .where(sql`${orders.status} <> 'awaiting_payment'`)
+    .orderBy(desc(orders.createdAt));
+  return rows.map(mapOrder);
+}
+
+const DASHBOARD_PAID_STATUSES = ["paid", "shipped", "delivered"] as const;
+
+/** Datos crudos para /admin/dashboard (7 queries en paralelo, la agregación queda en la página). */
+export async function getDashboardMetrics(params: {
+  todayStart: Date;
+  monthStart: Date;
+  weekStart: Date;
+}) {
+  const [todayRows, monthRows, pendingCountRows, completedCountRows, recent, chartRows, allStatusRows] =
+    await Promise.all([
+      db
+        .select({ total: orders.total })
+        .from(orders)
+        .where(
+          and(inArray(orders.status, DASHBOARD_PAID_STATUSES), gte(orders.createdAt, params.todayStart))
+        ),
+      db
+        .select({ total: orders.total })
+        .from(orders)
+        .where(
+          and(inArray(orders.status, DASHBOARD_PAID_STATUSES), gte(orders.createdAt, params.monthStart))
+        ),
+      db.select({ value: count() }).from(orders).where(eq(orders.status, "pending")),
+      db
+        .select({ value: count() })
+        .from(orders)
+        .where(
+          and(inArray(orders.status, DASHBOARD_PAID_STATUSES), gte(orders.createdAt, params.monthStart))
+        ),
+      db
+        .select({
+          orderNumber: orders.orderNumber,
+          displayCode: orders.displayCode,
+          customerName: orders.customerName,
+          customerEmail: orders.customerEmail,
+          total: orders.total,
+          status: orders.status,
+          createdAt: orders.createdAt,
+        })
+        .from(orders)
+        .orderBy(desc(orders.createdAt))
+        .limit(5),
+      db
+        .select({ total: orders.total, createdAt: orders.createdAt })
+        .from(orders)
+        .where(
+          and(inArray(orders.status, DASHBOARD_PAID_STATUSES), gte(orders.createdAt, params.weekStart))
+        ),
+      db.select({ status: orders.status }).from(orders),
+    ]);
+
+  return {
+    todayRows,
+    monthRows,
+    pendingCount: pendingCountRows[0]?.value ?? 0,
+    completedCount: completedCountRows[0]?.value ?? 0,
+    recentOrders: recent.map((r) => ({
+      order_number: r.orderNumber,
+      display_code: r.displayCode,
+      customer_name: r.customerName,
+      customer_email: r.customerEmail,
+      total: r.total,
+      status: r.status,
+      created_at: r.createdAt.toISOString(),
+    })),
+    chartRows: chartRows.map((r) => ({ total: r.total, created_at: r.createdAt.toISOString() })),
+    allStatuses: allStatusRows.map((r) => r.status),
+  };
+}
+
+/** Búsqueda pública por display_code + email de dueño (case-insensitive), para seguimiento de pedido. */
+export async function getOrderByDisplayCodeAndEmail(
+  displayCode: string,
+  ownerEmail: string
+): Promise<Order | null> {
+  const rows = await db
+    .select()
+    .from(orders)
+    .where(
+      sql`${orders.displayCode} = ${displayCode} and lower(${orders.customerEmail}) = lower(${ownerEmail})`
+    )
+    .limit(1);
+  return rows[0] ? mapOrder(rows[0]) : null;
+}
+
+/**
+ * Cancela en bloque las órdenes `awaiting_payment` creadas antes de `cutoff`
+ * (red de seguridad del cron de pedidos vencidos). Devuelve los order_number cancelados.
+ */
+export async function cancelStaleAwaitingPaymentOrders(cutoff: Date): Promise<number[]> {
+  const rows = await db
+    .update(orders)
+    .set({ status: "cancelled", updatedAt: new Date() })
+    .where(sql`${orders.status} = 'awaiting_payment' and ${orders.createdAt} < ${cutoff}`)
+    .returning({ orderNumber: orders.orderNumber });
+  return rows.map((r) => r.orderNumber);
 }
 
 export interface OrderInsertInput {

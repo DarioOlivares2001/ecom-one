@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { TrendingUp, ShoppingBag, Clock, CheckCircle2, AlertCircle } from "lucide-react";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { getDashboardMetrics } from "@/lib/db/repositories/orders";
 import { normalizeOrderStatusKey } from "@/lib/orders/formatOrderStatus";
 import { getOrderPersistedTotal } from "@/lib/orders/orderDisplayTotals";
 import { formatPrice } from "@/lib/utils/format";
@@ -36,72 +36,22 @@ const STATUS_CLS: Record<string, string> = {
 
 // ─── Data fetching ────────────────────────────────────────────────────────────
 
-const PAID = ["paid", "shipped", "delivered"] as const;
 const PAID_NOT_PREPARED_KEYS = new Set(["paid", "pagado", "payment_confirmed"]);
 const PREPARED_OR_CLOSED_KEYS = new Set(["preparing", "shipped", "delivered", "cancelled"]);
 
 async function getDashboardData() {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const supabase = createAdminClient() as any;
-
     const now   = new Date();
     const y     = now.getFullYear();
     const m     = now.getMonth();
     const d     = now.getDate();
 
-    const todayStart  = new Date(y, m, d).toISOString();
-    const monthStart  = new Date(y, m, 1).toISOString();
-    const weekStart   = new Date(y, m, d - 6).toISOString();
+    const todayStart  = new Date(y, m, d);
+    const monthStart  = new Date(y, m, 1);
+    const weekStart   = new Date(y, m, d - 6);
 
-    const [today, month, pendingRes, completedRes, recent, chart, porPrepararRes] =
-      await Promise.all([
-        // Today's revenue
-        supabase
-          .from("orders")
-          .select("total")
-          .in("status", PAID)
-          .gte("created_at", todayStart),
-
-        // This month's revenue
-        supabase
-          .from("orders")
-          .select("total")
-          .in("status", PAID)
-          .gte("created_at", monthStart),
-
-        // Pending orders count
-        supabase
-          .from("orders")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "pending"),
-
-        // Completed this month count
-        supabase
-          .from("orders")
-          .select("id", { count: "exact", head: true })
-          .in("status", PAID)
-          .gte("created_at", monthStart),
-
-        // Last 5 orders
-        supabase
-          .from("orders")
-          .select("order_number, display_code, customer_name, customer_email, total, status, created_at")
-          .order("created_at", { ascending: false })
-          .limit(5),
-
-        // Last 7 days paid orders for chart
-        supabase
-          .from("orders")
-          .select("total, created_at")
-          .in("status", PAID)
-          .gte("created_at", weekStart),
-
-        // Pedidos pagados que aun no estan preparados
-        supabase
-          .from("orders")
-          .select("status"),
-      ]);
+    const { todayRows, monthRows, pendingCount, completedCount, recentOrders, chartRows, allStatuses } =
+      await getDashboardMetrics({ todayStart, monthStart, weekStart });
 
     // ── Metrics ──
     type OrderTotalRow = { total: number | string | null };
@@ -111,13 +61,12 @@ async function getDashboardData() {
           acc + getOrderPersistedTotal(r as unknown as Record<string, unknown>),
         0
       );
-    const todaySales  = sum(today.data  ?? []);
-    const monthSales  = sum(month.data  ?? []);
-    const pending     = pendingRes.count   ?? 0;
-    const completed   = completedRes.count ?? 0;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const porPreparar = (porPrepararRes.data ?? []).filter((o: any) => {
-      const key = normalizeOrderStatusKey(o.status);
+    const todaySales  = sum(todayRows);
+    const monthSales  = sum(monthRows);
+    const pending     = pendingCount;
+    const completed   = completedCount;
+    const porPreparar = allStatuses.filter((status) => {
+      const key = normalizeOrderStatusKey(status);
       return PAID_NOT_PREPARED_KEYS.has(key) && !PREPARED_OR_CLOSED_KEYS.has(key);
     }).length;
 
@@ -131,8 +80,7 @@ async function getDashboardData() {
       };
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    for (const order of chart.data ?? []) {
+    for (const order of chartRows) {
       const key = new Date(order.created_at).toISOString().slice(0, 10);
       const slot = chartData.find((c) => c.dateKey === key);
       if (slot) slot.total += getOrderPersistedTotal(order as Record<string, unknown>);
@@ -144,7 +92,7 @@ async function getDashboardData() {
       pending,
       porPreparar,
       completed,
-      recentOrders: recent.data ?? [],
+      recentOrders,
       chartData,
     };
   } catch {
