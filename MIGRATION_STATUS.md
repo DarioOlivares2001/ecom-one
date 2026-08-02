@@ -4,7 +4,7 @@ Este documento se actualiza durante toda la migración. Última actualización: 
 
 ## Fase actual
 
-**Fase 5 — Autenticación y sesiones propias** (en curso).
+**Fase 6 — Cloudflare R2** (código completo; ⏸️ bloqueada esperando credenciales del usuario).
 
 ## Resumen de fases
 
@@ -15,6 +15,8 @@ Este documento se actualiza durante toda la migración. Última actualización: 
 | 2. Esquema completo en Neon | ✅ Completada |
 | 3. Capa de acceso a datos | ✅ Completada |
 | 4. Reemplazo de consultas por módulo | ✅ Completada (salvo Storage, ver nota) |
+| 5. Autenticación y sesiones | ✅ Completada |
+| 6. Cloudflare R2 | 🟡 Código listo, esperando credenciales (ver `R2_SETUP.md`) |
 | 4. Reemplazo de consultas por módulo | ⏳ Pendiente |
 | 5. Autenticación y sesiones | ⏳ Pendiente |
 | 6. Cloudflare R2 | ⏳ Pendiente |
@@ -166,6 +168,20 @@ Scripts de imágenes (`scripts/{list,optimize,cleanup-original,fix}-product-imag
 
 **tsc --noEmit: 0 errores.**
 
+## Fase 6 — Cloudflare R2 (código completo, bloqueada en credenciales)
+
+Implementado y compilando (`tsc --noEmit`: 0 errores):
+
+- `lib/storage/r2.ts` — módulo aislado con `uploadToR2`, `deleteFromR2`, `extractR2KeyFromPublicUrl`, `isR2Configured`, validación de MIME permitidos y límite de tamaño (10 MB). Usa `@aws-sdk/client-s3` (instalado) contra el endpoint S3-compatible de R2 (`https://<account_id>.r2.cloudflarestorage.com`). Variables privadas sin prefijo `NEXT_PUBLIC_*`.
+- Migrados a R2: `app/api/upload/{logo,favicon,hero}/route.ts` y las subidas de imágenes de producto en `app/admin/productos/nuevo/actions.ts` (la parte de BD de ese archivo ya estaba en Drizzle desde la Fase 4). Cada ruta valida `isR2Configured()` primero y devuelve un error 503 controlado (no 500 ni crash) si faltan credenciales.
+- Migrados a R2 + Neon: los 4 scripts de imágenes (`scripts/{list,optimize,cleanup-original,fix}-product-image*.mjs`) — antes usaban `@supabase/supabase-js` tanto para la tabla `products`/`product_variants` como para Storage; ahora usan el driver `neon()` para SQL y `@aws-sdk/client-s3` para Storage directamente. Son scripts standalone `.mjs` que no pueden importar `lib/storage/r2.ts` (TypeScript) sin un paso de build, así que el cliente S3 se declara inline en cada uno — mismo patrón que ya tenían con Supabase (cada script creaba su propio cliente, sin helper compartido).
+- `next.config.mjs`: agrega el dominio de `R2_PUBLIC_URL` a `images.remotePatterns` dinámicamente (parseado en build time; no rompe si la variable no está seteada). El patrón `*.supabase.co` se deja como comentario "legacy" para imágenes ya subidas antes de esta migración (no aplica a esta tienda nueva, pero no hace daño dejarlo).
+- `.env.example` actualizado con las 5 variables `R2_*` documentadas.
+- Estructura de carpetas en el bucket: `logos/`, `favicons/`, `hero-banners/`, `products/`.
+
+**Bloqueo externo**: `.env.local` no tiene ninguna variable `R2_*` (confirmado, cero coincidencias). Sin ellas, `isR2Configured()` devuelve `false` y las rutas de upload responden 503 con mensaje claro — no rompen el build ni el resto de la app. Creado `R2_SETUP.md` con instrucciones paso a paso (crear bucket, habilitar acceso público, crear token acotado al bucket, variables exactas a pegar en `.env.local`). **Me detengo acá** para que el usuario configure R2 según ese documento; continúo con la Fase 7 en adelante cuando confirme.
+
 ## Bloqueos externos
 
-Ninguno por ahora. Credenciales de Cloudflare R2 aún no confirmadas — se documentarán en `R2_SETUP.md` cuando se llegue a la Fase 6 si no están presentes en `.env.local`.
+- **Cloudflare R2** (ver arriba): faltan `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL` en `.env.local`. Instrucciones en `R2_SETUP.md`.
+- **CRON_SECRET**: generado automáticamente en la Fase 5 (no era un bloqueo real, ya está resuelto).

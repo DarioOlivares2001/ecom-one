@@ -1,30 +1,43 @@
 import "dotenv/config";
 import dotenv from "dotenv";
-import { createClient } from "@supabase/supabase-js";
+import { neon } from "@neondatabase/serverless";
+import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import fetch from "node-fetch";
 import sharp from "sharp";
 
 dotenv.config({ path: ".env.local", override: true });
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const BUCKET = "products";
 const TARGET_MAX_BYTES = 400 * 1024;
 const TARGET_WIDTH = 1200;
 const WEBP_QUALITY = 82;
 const DRY_RUN = process.argv.includes("--dry-run");
 
 const missingEnvVars = [
-  !SUPABASE_URL ? "NEXT_PUBLIC_SUPABASE_URL" : null,
-  !SUPABASE_SERVICE_ROLE_KEY ? "SUPABASE_SERVICE_ROLE_KEY" : null,
+  !process.env.DATABASE_URL ? "DATABASE_URL" : null,
+  !process.env.R2_ACCOUNT_ID ? "R2_ACCOUNT_ID" : null,
+  !process.env.R2_ACCESS_KEY_ID ? "R2_ACCESS_KEY_ID" : null,
+  !process.env.R2_SECRET_ACCESS_KEY ? "R2_SECRET_ACCESS_KEY" : null,
+  !process.env.R2_BUCKET_NAME ? "R2_BUCKET_NAME" : null,
+  !process.env.R2_PUBLIC_URL ? "R2_PUBLIC_URL" : null,
 ].filter(Boolean);
 
 if (missingEnvVars.length > 0) {
   console.error(`[optimize-product-images] Faltan variables: ${missingEnvVars.join(", ")}`);
+  console.error("Ver R2_SETUP.md para configurar Cloudflare R2.");
   process.exit(1);
 }
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+const sql = neon(process.env.DATABASE_URL);
+const R2_BUCKET = process.env.R2_BUCKET_NAME;
+const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL.replace(/\/+$/, "");
+const s3 = new S3Client({
+  region: "auto",
+  endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID,
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+  },
+});
 
 function formatBytes(bytes) {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
@@ -38,18 +51,16 @@ function reductionPercent(before, after) {
   return Math.max(0, Math.round(((before - after) / before) * 100));
 }
 
-function extractStoragePathFromUrl(url) {
-  // Espera formato: .../storage/v1/object/public/products/<path>
-  const marker = `/storage/v1/object/public/${BUCKET}/`;
-  const idx = url.indexOf(marker);
-  if (idx === -1) return null;
-  return decodeURIComponent(url.slice(idx + marker.length));
+/** Extrae la key R2 de una URL pública. Solo procesa imágenes ya alojadas en el bucket configurado. */
+function extractR2KeyFromUrl(url) {
+  if (!url.startsWith(`${R2_PUBLIC_URL}/`)) return null;
+  return decodeURIComponent(url.slice(R2_PUBLIC_URL.length + 1));
 }
 
-function buildOptimizedPath(originalPath) {
-  const lastSlash = originalPath.lastIndexOf("/");
-  const dir = lastSlash >= 0 ? originalPath.slice(0, lastSlash + 1) : "";
-  const filename = lastSlash >= 0 ? originalPath.slice(lastSlash + 1) : originalPath;
+function buildOptimizedKey(originalKey) {
+  const lastSlash = originalKey.lastIndexOf("/");
+  const dir = lastSlash >= 0 ? originalKey.slice(0, lastSlash + 1) : "";
+  const filename = lastSlash >= 0 ? originalKey.slice(lastSlash + 1) : originalKey;
   const dot = filename.lastIndexOf(".");
   const base = dot > 0 ? filename.slice(0, dot) : filename;
   return `${dir}${base}-opt.webp`;
@@ -75,16 +86,21 @@ async function optimizeImageBuffer(buffer) {
   return output;
 }
 
-async function main() {
-  const { data: products, error } = await supabase
-    .from("products")
-    .select("id,name,images")
-    .order("created_at", { ascending: false });
+async function uploadToR2(key, body, contentType) {
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: R2_BUCKET,
+      Key: key,
+      Body: body,
+      ContentType: contentType,
+      CacheControl: "public, max-age=31536000, immutable",
+    })
+  );
+  return `${R2_PUBLIC_URL}/${key}`;
+}
 
-  if (error) {
-    console.error("[optimize-product-images] Error leyendo productos:", error.message);
-    process.exit(1);
-  }
+async function main() {
+  const products = await sql`select id, name, images from products order by created_at desc`;
 
   let processedImages = 0;
   let updatedProducts = 0;
@@ -99,9 +115,9 @@ async function main() {
     let productChanged = false;
 
     for (const url of images) {
-      const storagePath = extractStoragePathFromUrl(url);
-      if (!storagePath) {
-        console.warn(`[optimize-product-images] URL fuera de bucket esperado, se mantiene: ${url}`);
+      const key = extractR2KeyFromUrl(url);
+      if (!key) {
+        console.warn(`[optimize-product-images] URL fuera del bucket R2 configurado, se mantiene: ${url}`);
         newImages.push(url);
         continue;
       }
@@ -123,39 +139,23 @@ async function main() {
         totalOriginalBytes += originalBytes;
         totalOptimizedBytes += optimizedBytes;
 
-        const optimizedPath = buildOptimizedPath(storagePath);
+        const optimizedKey = buildOptimizedKey(key);
         if (DRY_RUN) {
           processedImages += 1;
           console.log(
-            `[optimize-product-images][dry-run] ${product.name} | ${storagePath} -> ${optimizedPath} | ${formatBytes(originalBytes)} -> ${formatBytes(optimizedBytes)} | -${reductionPercent(originalBytes, optimizedBytes)}%`
+            `[optimize-product-images][dry-run] ${product.name} | ${key} -> ${optimizedKey} | ${formatBytes(originalBytes)} -> ${formatBytes(optimizedBytes)} | -${reductionPercent(originalBytes, optimizedBytes)}%`
           );
           newImages.push(url);
           continue;
         }
 
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from(BUCKET)
-          .upload(optimizedPath, optimizedBuffer, {
-            contentType: "image/webp",
-            upsert: true,
-          });
-
-        if (uploadError) {
-          console.error(`[optimize-product-images] Error subiendo ${optimizedPath}: ${uploadError.message}`);
-          newImages.push(url);
-          continue;
-        }
-
-        const {
-          data: { publicUrl },
-        } = supabase.storage.from(BUCKET).getPublicUrl(uploadData.path);
-
+        const publicUrl = await uploadToR2(optimizedKey, optimizedBuffer, "image/webp");
         newImages.push(publicUrl);
         productChanged = true;
         processedImages += 1;
 
         console.log(
-          `[optimize-product-images] ${product.name} | ${storagePath} -> ${optimizedPath} | ${formatBytes(originalBytes)} -> ${formatBytes(optimizedBytes)} | -${reductionPercent(originalBytes, optimizedBytes)}%`
+          `[optimize-product-images] ${product.name} | ${key} -> ${optimizedKey} | ${formatBytes(originalBytes)} -> ${formatBytes(optimizedBytes)} | -${reductionPercent(originalBytes, optimizedBytes)}%`
         );
       } catch (err) {
         console.error(
@@ -166,38 +166,25 @@ async function main() {
       }
     }
 
-    if (productChanged) {
-      if (DRY_RUN) {
-        continue;
-      }
-      const { error: updateError } = await supabase
-        .from("products")
-        .update({ images: newImages })
-        .eq("id", product.id);
-
-      if (updateError) {
-        console.error(
-          `[optimize-product-images] Error actualizando DB producto ${product.id}: ${updateError.message}`
-        );
-      } else {
+    if (productChanged && !DRY_RUN) {
+      try {
+        await sql`update products set images = ${newImages} where id = ${product.id}`;
         updatedProducts += 1;
+      } catch (updateError) {
+        console.error(`[optimize-product-images] Error actualizando DB producto ${product.id}:`, updateError);
       }
     }
   }
 
   console.log("\n=== Resumen optimización ===");
-  if (DRY_RUN) {
-    console.log("Modo: DRY RUN (sin subir a Supabase ni actualizar DB)");
-  } else {
-    console.log("Modo: REAL (subida a Supabase + update DB)");
-  }
+  console.log(DRY_RUN ? "Modo: DRY RUN (sin subir a R2 ni actualizar DB)" : "Modo: REAL (subida a R2 + update DB)");
   console.log(`Imágenes optimizadas/subidas: ${processedImages}`);
   console.log(`Productos actualizados en DB: ${updatedProducts}`);
   const estimatedSaved = Math.max(0, totalOriginalBytes - totalOptimizedBytes);
   const estimatedReduction = reductionPercent(totalOriginalBytes, totalOptimizedBytes);
   console.log(`Ahorro estimado total: ${formatBytes(estimatedSaved)} (-${estimatedReduction}%)`);
   if (!DRY_RUN) {
-    console.log("Originales conservadas en bucket (no eliminadas).");
+    console.log("Originales conservadas en el bucket (no eliminadas).");
   }
 }
 
@@ -205,4 +192,3 @@ main().catch((err) => {
   console.error("[optimize-product-images] Error inesperado:", err);
   process.exit(1);
 });
-

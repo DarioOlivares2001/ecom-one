@@ -1,13 +1,10 @@
 import { NextResponse } from "next/server";
 import { compressIconImage } from "@/lib/images/compressIconImage";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { isAllowedImageMimeType, isR2Configured, MAX_UPLOAD_BYTES, uploadToR2 } from "@/lib/storage/r2";
 
 export const runtime = "nodejs";
 
-const BUCKET = "store-assets";
 const PATH_PREFIX = "favicons/";
-
-const ALLOWED = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"]);
 
 /** Los 3 tamaños que se generan desde una sola imagen subida. */
 const SIZES = [
@@ -16,20 +13,15 @@ const SIZES = [
   { key: "pwa", sizePx: 512 },
 ] as const;
 
-function formatStorageUploadError(raw: string, bucketId: string): string {
-  const lower = raw.toLowerCase();
-  const looksLikeMissingBucket =
-    lower.includes("bucket not found") ||
-    (lower.includes("bucket") && lower.includes("not found")) ||
-    lower.includes("resource not found");
-  if (looksLikeMissingBucket) {
-    return `No existe el bucket "${bucketId}" en Supabase Storage. Crea el bucket en el dashboard (Storage → New bucket) o ajusta la constante BUCKET en app/api/upload/favicon/route.ts.`;
-  }
-  return raw;
-}
-
 export async function POST(req: Request) {
   try {
+    if (!isR2Configured()) {
+      return NextResponse.json(
+        { error: "Cloudflare R2 no está configurado todavía. Ver R2_SETUP.md." },
+        { status: 503 }
+      );
+    }
+
     const ct = req.headers.get("content-type") ?? "";
     if (!ct.includes("multipart/form-data")) {
       return NextResponse.json({ error: "Se espera multipart/form-data" }, { status: 400 });
@@ -40,43 +32,27 @@ export async function POST(req: Request) {
     if (!(file instanceof File) || file.size === 0) {
       return NextResponse.json({ error: "Archivo requerido" }, { status: 400 });
     }
-    if (!ALLOWED.has(file.type)) {
+    if (!isAllowedImageMimeType(file.type)) {
       return NextResponse.json(
         { error: "Formato no permitido. Usa JPEG, PNG, WebP o GIF." },
         { status: 400 }
       );
     }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      return NextResponse.json({ error: "El archivo supera el tamaño máximo permitido (10 MB)." }, { status: 400 });
+    }
 
     const originalBytes = file.size;
     const arrayBuf = await file.arrayBuffer();
     const input = Buffer.from(arrayBuf);
-    const supabase = createAdminClient();
     const ts = Date.now();
 
     const urls: Record<string, string> = {};
 
-    for (const { key, sizePx } of SIZES) {
+    for (const { key: sizeKey, sizePx } of SIZES) {
       const { buffer } = await compressIconImage(input, sizePx);
-      const path = `${PATH_PREFIX}${key}-${sizePx}-${ts}.png`;
-
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from(BUCKET)
-        .upload(path, buffer, {
-          contentType: "image/png",
-          upsert: true,
-          cacheControl: "31536000",
-        });
-
-      if (uploadError) {
-        console.error("[favicon-upload-error]", uploadError);
-        const friendly = formatStorageUploadError(uploadError.message, BUCKET);
-        return NextResponse.json({ error: friendly }, { status: 500 });
-      }
-
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from(BUCKET).getPublicUrl(uploadData.path);
-      urls[key] = publicUrl;
+      const key = `${PATH_PREFIX}${sizeKey}-${sizePx}-${ts}.png`;
+      urls[sizeKey] = await uploadToR2({ key, body: buffer, contentType: "image/png" });
     }
 
     return NextResponse.json({

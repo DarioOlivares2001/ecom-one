@@ -1,24 +1,16 @@
 import "dotenv/config";
 import dotenv from "dotenv";
-import { createClient } from "@supabase/supabase-js";
+import { neon } from "@neondatabase/serverless";
 import { writeFile } from "node:fs/promises";
 
 dotenv.config({ path: ".env.local", override: true });
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-const missingEnvVars = [
-  !SUPABASE_URL ? "NEXT_PUBLIC_SUPABASE_URL" : null,
-  !SUPABASE_SERVICE_ROLE_KEY ? "SUPABASE_SERVICE_ROLE_KEY" : null,
-].filter(Boolean);
-
-if (missingEnvVars.length > 0) {
-  console.error(`[audit-product-images] Faltan variables: ${missingEnvVars.join(", ")}`);
+if (!process.env.DATABASE_URL) {
+  console.error("[audit-product-images] Falta DATABASE_URL en .env.local");
   process.exit(1);
 }
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+const sql = neon(process.env.DATABASE_URL);
 
 function formatBytes(bytes) {
   if (!Number.isFinite(bytes) || bytes <= 0) return "";
@@ -146,19 +138,19 @@ async function inspectImage(url) {
 }
 
 async function main() {
-  const { data, error } = await supabase
-    .from("products")
-    .select("id,name,images")
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    console.error("[audit-product-images] Error consultando productos:", error.message);
+  let products;
+  try {
+    products = await sql`
+      select id, name, images from products order by created_at desc
+    `;
+  } catch (error) {
+    console.error("[audit-product-images] Error consultando productos:", error);
     process.exit(1);
   }
 
   const rows = [];
   const imageIndexByProduct = new Map();
-  for (const product of data ?? []) {
+  for (const product of products ?? []) {
     const images = Array.isArray(product.images) ? product.images : [];
     for (const url of images) {
       const nextIdx = (imageIndexByProduct.get(product.id) ?? 0) + 1;

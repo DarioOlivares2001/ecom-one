@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { isR2Configured, uploadToR2 } from "@/lib/storage/r2";
 import {
   createProduct,
   deleteProductHard,
@@ -23,33 +23,31 @@ import { parseProductSectionsFromFormData } from "@/lib/product/sections/parseFr
 export async function createProductAction(
   formData: FormData
 ): Promise<{ error?: string; success?: boolean }> {
-  const supabase = createAdminClient();
   const hasVariants = formData.get("has_variants") === "true";
 
   // ── Upload multiple images in order ───────────────────────
   const count = Number(formData.get("image_count") ?? "0");
   const images: string[] = [];
 
+  if (count > 0 && !isR2Configured()) {
+    return { error: "Cloudflare R2 no está configurado todavía. Ver R2_SETUP.md." };
+  }
+
   for (let i = 0; i < count; i++) {
     const file = formData.get(`image_${i}`) as File | null;
     if (!file || file.size === 0) continue;
 
     const ext = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
-    const fileName = `${Date.now()}-${i}.${ext}`;
+    const key = `products/${Date.now()}-${i}.${ext}`;
 
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from("products")
-      .upload(fileName, file, { contentType: file.type, upsert: false });
-
-    if (uploadError) {
-      return { error: `Error subiendo imagen ${i + 1}: ${uploadError.message}` };
+    try {
+      const buffer = Buffer.from(await file.arrayBuffer());
+      const publicUrl = await uploadToR2({ key, body: buffer, contentType: file.type });
+      images.push(publicUrl);
+    } catch (uploadError) {
+      const message = uploadError instanceof Error ? uploadError.message : "error desconocido";
+      return { error: `Error subiendo imagen ${i + 1}: ${message}` };
     }
-
-    const {
-      data: { publicUrl },
-    } = supabase.storage.from("products").getPublicUrl(uploadData.path);
-
-    images.push(publicUrl);
   }
 
   // ── Parse variants ────────────────────────────────────────
@@ -232,12 +230,18 @@ export async function updateProductAction(
   id: string,
   formData: FormData
 ): Promise<{ error?: string; success?: boolean }> {
-  const supabase = createAdminClient();
   const hasVariants = formData.get("has_variants") === "true";
 
   // ── Process ordered image slots ───────────────────────────
   const slotCount = Number(formData.get("slot_count") ?? "0");
   const images: string[] = [];
+  const hasNewSlotFile = Array.from({ length: slotCount }, (_, i) =>
+    formData.get(`slot_${i}_type`)
+  ).includes("new");
+
+  if (hasNewSlotFile && !isR2Configured()) {
+    return { error: "Cloudflare R2 no está configurado todavía. Ver R2_SETUP.md." };
+  }
 
   for (let i = 0; i < slotCount; i++) {
     const type = formData.get(`slot_${i}_type`) as string;
@@ -248,15 +252,15 @@ export async function updateProductAction(
       const file = formData.get(`slot_${i}_file`) as File | null;
       if (!file || file.size === 0) continue;
       const ext = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
-      const fileName = `${Date.now()}-${i}.${ext}`;
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from("products")
-        .upload(fileName, file, { contentType: file.type, upsert: false });
-      if (uploadError) return { error: `Error subiendo imagen: ${uploadError.message}` };
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from("products").getPublicUrl(uploadData.path);
-      images.push(publicUrl);
+      const key = `products/${Date.now()}-${i}.${ext}`;
+      try {
+        const buffer = Buffer.from(await file.arrayBuffer());
+        const publicUrl = await uploadToR2({ key, body: buffer, contentType: file.type });
+        images.push(publicUrl);
+      } catch (uploadError) {
+        const message = uploadError instanceof Error ? uploadError.message : "error desconocido";
+        return { error: `Error subiendo imagen: ${message}` };
+      }
     }
   }
 
