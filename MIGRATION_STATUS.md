@@ -4,7 +4,7 @@ Este documento se actualiza durante toda la migración. Última actualización: 
 
 ## Fase actual
 
-**Fase 3 — Capa de acceso a datos** (en curso).
+**Fase 4 — Reemplazo de consultas por módulo** (en curso).
 
 ## Resumen de fases
 
@@ -13,7 +13,7 @@ Este documento se actualiza durante toda la migración. Última actualización: 
 | 0. Protección del proyecto | ✅ Completada |
 | 1. Auditoría de Supabase | ✅ Completada |
 | 2. Esquema completo en Neon | ✅ Completada |
-| 3. Capa de acceso a datos | 🔄 En curso |
+| 3. Capa de acceso a datos | ✅ Completada |
 | 4. Reemplazo de consultas por módulo | ⏳ Pendiente |
 | 5. Autenticación y sesiones | ⏳ Pendiente |
 | 6. Cloudflare R2 | ⏳ Pendiente |
@@ -118,10 +118,22 @@ No se usa como barrera real: el ~100% del tráfico pasa por `service_role` (bypa
 5. **Esquema modularizado** en `lib/db/schema/{products,productVariants,orders,reviews,clientes,clienteDirecciones,adminUsers,storeSettings}.ts` con barrel `index.ts`; `drizzle.config.ts` actualizado a `./lib/db/schema/index.ts`. El antiguo `lib/db/schema.ts` monolítico fue reemplazado (su único contenido, `products`, se movió sin cambios a `products.ts`).
 6. **Convención de migración**: igual que `0000_create-products.sql`, Drizzle genera columnas/FKs/índices simples; los CHECK, índices funcionales/parciales y triggers se agregan a mano en el mismo archivo de migración (Drizzle no los representa completamente).
 
-## Pendientes inmediatos (Fase 3)
+## Fase 3 — Capa de acceso a datos (completada)
 
-- Crear `lib/db/repositories/*` (productos, variantes, pedidos, clientes, direcciones, reseñas, admin_users, store_settings) y `lib/db/transactions/confirmPaidOrder.ts` (wrapper tipado sobre la función nativa).
-- Diseñar tipos inferidos (`$inferSelect`/`$inferInsert`) para reemplazar `lib/supabase/types.ts`.
+**Decisión de arquitectura clave**: los repositorios devuelven objetos en **snake_case** (mismo shape que `lib/supabase/types.ts`), no el shape camelCase nativo de Drizzle. Se creó `lib/db/types.ts` con esas interfaces (copia desacoplada de `Database`, sin el wrapper de Supabase). Cada repositorio tiene una función `mapX(row)` que convierte el resultado camelCase de Drizzle al shape snake_case. Motivo: decenas de archivos ya acceden a campos como `row.store_name`, `order.customer_email`, `product.compare_at_price` — con este mapeo, la Fase 4 solo necesita cambiar *cómo se obtienen* los datos (llamar a un repositorio en vez de `supabase.from(...)`), no *cómo se leen* sus campos en cada pantalla/acción. Reduce drásticamente el riesgo de la reescritura de ~90 archivos.
+
+Archivos creados:
+- `lib/db/types.ts` — interfaces Row en snake_case (products, product_variants, orders, reviews, clientes, cliente_direcciones, admin_users, store_settings + Json/ShippingAddress/OrderItem).
+- `lib/db/repositories/{products,productVariants,orders,reviews,clientes,clienteDirecciones,adminUsers,storeSettings}.ts` + `index.ts` — funciones tipadas de lectura/escritura por dominio (get/list/create/update, sin lógica HTTP ni Zod, eso queda en la capa de rutas/actions en Fase 4).
+- `lib/db/transactions/confirmPaidOrder.ts` — wrapper tipado sobre la función nativa `confirm_paid_order_and_decrement_stock`.
+
+`npx tsc --noEmit` sobre todo el proyecto: **0 errores** (la capa de datos nueva compila limpia; el resto del código, sin tocar todavía, sigue compilando contra Supabase sin conflictos).
+
+## Fase 4 — Reemplazo de consultas por módulo (en curso)
+
+Orden de trabajo (según catálogo de módulos de la mission): catálogo público → detalle de producto → variantes/descuentos → recomendaciones/upsells → reseñas → configuración de tienda → admin productos → admin pedidos → admin clientes → admin usuarios → cuenta de cliente → direcciones → checkout → Flow create → Flow webhook → cron pedidos vencidos → confirmación de pago/stock → tracking Meta/CAPI → scripts administrativos.
+
+Los helpers de `lib/supabase/*` NO se eliminan todavía — se retiran recién en la Fase 7, cuando `rg` confirme 0 consumidores restantes.
 
 ## Bloqueos externos
 
