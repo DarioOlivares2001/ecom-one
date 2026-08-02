@@ -1,0 +1,323 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import './tokens.css';
+
+:root {
+  --brand-primary: #6D28D9;
+  --brand-accent: #F472B6;
+  --brand-gradient: linear-gradient(135deg, #6D28D9 0%, #F472B6 100%);
+  --brand-soft: linear-gradient(135deg, rgba(109,40,217,0.14) 0%, rgba(244,114,182,0.12) 100%);
+  --brand-ring: rgba(109, 40, 217, 0.42);
+  --font-heading: var(--font-display);
+  --font-body: var(--font-sans);
+  --logo-size-desktop: 32px;
+  --logo-size-mobile: 28px;
+  --brand-scale: 1;
+  --brand-text-color: var(--brand-primary);
+  --color-text-secondary: var(--color-text-muted);
+}
+
+/* Bridge dynamic brand vars to existing design tokens */
+:root {
+  --color-primary: var(--brand-primary);
+  --color-primary-hover: color-mix(in oklab, var(--brand-primary) 86%, black);
+  --color-accent: var(--brand-accent);
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+body {
+  color: var(--color-text);
+  background: var(--color-background);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+input,
+textarea,
+select {
+  color: var(--color-text);
+  background: var(--color-surface);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--color-text-secondary);
+  opacity: 1;
+}
+
+h1,
+h2,
+h3,
+.product-title {
+  font-family: var(--font-heading);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+@layer utilities {
+  .input-money {
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    color: var(--color-text);
+    background: var(--color-surface);
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .font-display {
+    font-family: var(--font-heading);
+  }
+
+  .bg-brand-gradient {
+    background: var(--brand-gradient);
+  }
+
+  .bg-brand-soft {
+    background: var(--brand-soft);
+  }
+
+  .text-brand {
+    color: var(--brand-primary);
+  }
+
+  .ring-brand {
+    --tw-ring-color: var(--brand-ring);
+  }
+
+  .brand-gradient {
+    background: var(--brand-gradient);
+  }
+
+  .brand-text {
+    color: var(--brand-text-color, var(--brand-primary, var(--color-text)));
+  }
+
+  .brand-bg {
+    background-color: var(--brand-primary);
+  }
+}
+
+/* Barra de anuncios encima del Navbar: gradiente en movimiento */
+@keyframes promo-ticker-gradient-move {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 100% 50%;
+  }
+}
+
+.promo-ticker-bar {
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--brand-primary) 78%, black),
+    color-mix(in oklab, var(--brand-accent) 72%, black),
+    color-mix(
+      in oklab,
+      color-mix(in oklab, var(--brand-primary) 52%, var(--brand-accent)) 68%,
+      black
+    ),
+    color-mix(in oklab, var(--brand-primary) 78%, black)
+  );
+  background-size: 300% 100%;
+  animation: promo-ticker-gradient-move 7s ease-in-out infinite;
+}
+
+.promo-ticker-bar:hover {
+  animation-play-state: paused;
+}
+
+/* Frase: entrada rápida desde la derecha; luego fija (sin basculado) */
+@keyframes promo-phrase-journey {
+  0% {
+    opacity: 0;
+    transform: translate3d(110px, 0, 0);
+  }
+  7% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes promo-text-glow {
+  0% {
+    text-shadow:
+      0 0 2px #fff,
+      0 0 10px rgba(255, 255, 255, 1),
+      0 0 24px rgba(255, 255, 255, 0.95),
+      0 0 42px rgba(255, 255, 255, 0.65),
+      0 0 64px rgba(255, 220, 255, 0.45),
+      0 0 88px rgba(255, 255, 255, 0.28);
+    filter: brightness(1.65) contrast(1.08);
+  }
+  4% {
+    text-shadow:
+      0 0 6px rgba(255, 255, 255, 0.9),
+      0 0 20px rgba(255, 255, 255, 0.55),
+      0 0 40px rgba(255, 200, 255, 0.35);
+    filter: brightness(1.38);
+  }
+  9% {
+    /* Segundo repique (más corto) para fijar la mirada */
+    text-shadow:
+      0 0 4px #fff,
+      0 0 14px rgba(255, 255, 255, 0.95),
+      0 0 32px rgba(255, 255, 255, 0.5);
+    filter: brightness(1.42);
+  }
+  16% {
+    text-shadow: 0 0 6px rgba(255, 255, 255, 0.4);
+    filter: brightness(1.1);
+  }
+  28%,
+  100% {
+    text-shadow: none;
+    filter: brightness(1);
+  }
+}
+
+@keyframes promo-bullet-flash {
+  0%,
+  9% {
+    color: rgba(255, 255, 255, 1);
+    text-shadow:
+      0 0 8px #fff,
+      0 0 18px rgba(255, 255, 255, 0.95),
+      0 0 32px rgba(255, 240, 255, 0.55);
+    filter: brightness(1.5);
+  }
+  20%,
+  100% {
+    color: rgba(255, 255, 255, 0.75);
+    text-shadow: none;
+    filter: brightness(1);
+  }
+}
+
+@keyframes promo-burst-wrap {
+  0% {
+    transform: scale3d(1, 1, 1);
+    filter: drop-shadow(0 0 0 transparent);
+  }
+  5% {
+    transform: scale3d(1.035, 1.035, 1);
+    filter:
+      drop-shadow(0 0 18px rgba(255, 255, 255, 0.85))
+      drop-shadow(0 0 36px rgba(255, 210, 255, 0.45))
+      drop-shadow(0 0 56px rgba(255, 255, 255, 0.25));
+  }
+  12% {
+    transform: scale3d(1, 1, 1);
+    filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.35));
+  }
+  22%,
+  100% {
+    transform: scale3d(1, 1, 1);
+    filter: none;
+  }
+}
+
+@keyframes promo-shine-sweep {
+  0% {
+    transform: translate3d(-165%, 0, 0);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(260%, 0, 0);
+    opacity: 0;
+  }
+}
+
+.promo-ticker-phrase {
+  will-change: transform, opacity;
+  animation: promo-phrase-journey var(--promo-cycle, 5200ms) cubic-bezier(0.2, 0.85, 0.25, 1) both;
+}
+
+.promo-ticker-phrase-text {
+  animation: promo-text-glow var(--promo-cycle, 5200ms) ease-out both;
+}
+
+.promo-ticker-burst {
+  transform-origin: center center;
+  animation: promo-burst-wrap var(--promo-cycle, 5200ms) cubic-bezier(0.25, 0.9, 0.35, 1) both;
+}
+
+.promo-ticker-bullet {
+  animation: promo-bullet-flash var(--promo-cycle, 5200ms) ease-out both;
+}
+
+.promo-ticker-shine {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 72%;
+  margin-left: -14%;
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.06) 32%,
+    rgba(255, 255, 255, 0.35) 42%,
+    rgba(255, 255, 255, 1) 50%,
+    rgba(255, 255, 255, 0.35) 58%,
+    rgba(255, 255, 255, 0.06) 68%,
+    transparent 100%
+  );
+  pointer-events: none;
+  mix-blend-mode: overlay;
+  animation: promo-shine-sweep 0.62s cubic-bezier(0.22, 0.9, 0.36, 1) 0.08s both;
+}
+
+.promo-ticker-bar:hover .promo-ticker-phrase,
+.promo-ticker-bar:hover .promo-ticker-phrase-text,
+.promo-ticker-bar:hover .promo-ticker-shine,
+.promo-ticker-bar:hover .promo-ticker-burst,
+.promo-ticker-bar:hover .promo-ticker-bullet {
+  animation-play-state: paused;
+}
+
+/* Admin: pedido entregado — efecto dorado en timeline */
+@keyframes order-timeline-celebrate-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px rgba(251, 191, 36, 0.55),
+      0 8px 28px -4px rgba(245, 158, 11, 0.42);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px rgba(251, 191, 36, 0.78),
+      0 10px 40px -2px rgba(245, 158, 11, 0.55);
+  }
+}
+
+@layer utilities {
+  .animate-order-timeline-celebrate {
+    animation: order-timeline-celebrate-glow 2.4s ease-in-out infinite;
+  }
+}

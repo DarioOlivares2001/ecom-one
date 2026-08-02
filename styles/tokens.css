@@ -1,0 +1,29 @@
+/* Valores por defecto; en runtime `app/layout.tsx` sobrescribe --color-* del tema con `buildThemeCssProperties` (incluye saneo de contraste). */
+:root {
+  --color-primary: #000000;
+  --color-primary-hover: #1a1a1a;
+  --color-accent: #FF385C;
+  --color-background: #FAFAFA;
+  --color-surface: #FFFFFF;
+  --color-text: #111111;
+  --color-text-muted: #6B7280;
+  --color-border: #E5E7EB;
+  --color-success: #10B981;
+  --color-error: #EF4444;
+
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-display: 'Space Grotesk', system-ui, sans-serif;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-full: 9999px;
+
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.10);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.12);
+
+  --transition-fast: 150ms ease;
+  --transition-base: 250ms ease;
+  --transition-slow: 400ms ease;
+}

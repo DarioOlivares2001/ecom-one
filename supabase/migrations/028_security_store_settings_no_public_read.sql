@@ -1,0 +1,32 @@
+-- ============================================================
+-- 028_security_store_settings_no_public_read.sql
+-- PRIORIDAD 1 — SEGURIDAD. Aplicable sola, independiente de las demás.
+--
+-- Producción tiene una policy `store_settings_public_read` (SELECT, rol
+-- `public`, qual=true) que NUNCA estuvo en ninguna migración (003 solo
+-- esperaba una única policy `store_settings_service_all`, service_role para
+-- todo). Efecto real: cualquiera con la anon key pública puede leer
+-- store_settings completa vía la REST API de Supabase, sin pasar por la
+-- app — incluyendo meta_capi_access_token, un secreto de servidor que
+-- lib/store-settings/getStoreSettings.ts asume que nunca sale del server.
+--
+-- Verificado antes de escribir esto (no asumido):
+--   - grep de "from ['\"]@/lib/supabase/client['\"]" en todo el repo → 0
+--     resultados. El cliente browser (anon key) no se importa en ningún
+--     lado del código actual.
+--   - Los 4 puntos reales que leen/escriben store_settings
+--     (getStoreSettings.ts, app/admin/configuracion/page.tsx,
+--     app/admin/marketing/meta/page.tsx, app/admin/marketing/clarity/page.tsx)
+--     usan exclusivamente createAdminClient() (service_role, bypassa RLS).
+-- Conclusión: ningún flujo depende de esta policy. Se puede eliminar sin
+-- romper nada.
+--
+-- No se tocan las otras 3 policies reales de producción
+-- (service_insert/update/delete, todas gateadas a
+-- auth.role() = 'service_role') — ya eran correctas, y de todos modos
+-- service_role bypassa RLS por completo, así que el acceso real de la app
+-- no depende de ninguna policy de esta tabla. Esas 3 se recapturan de forma
+-- idempotente en 029 (no las duplico acá para no pisarlas dos veces).
+-- ============================================================
+
+DROP POLICY IF EXISTS "store_settings_public_read" ON public.store_settings;
