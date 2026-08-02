@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { getClienteByEmail } from "@/lib/db/repositories/clientes";
 import { normalizeClienteEmail } from "@/lib/clientes/upsertClienteFromOrder";
 import { getCuentaSessionFromCookies } from "@/lib/cuenta/session";
 import { DatosForm, type DatosIniciales } from "./DatosForm";
@@ -14,15 +14,14 @@ export default async function CuentaDatosPage() {
   if (!session) redirect("/cuenta/login");
 
   const email = normalizeClienteEmail(session.email);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const admin = createAdminClient() as any;
-  const { data: cliente, error } = await admin
-    .from("clientes")
-    .select("nombre,email,telefono,rut_numero,rut_dv")
-    .eq("email", email)
-    .maybeSingle();
+  let cliente;
+  try {
+    cliente = await getClienteByEmail(email);
+  } catch {
+    cliente = null;
+  }
 
-  if (error || !cliente) {
+  if (!cliente) {
     redirect("/cuenta/login");
   }
 

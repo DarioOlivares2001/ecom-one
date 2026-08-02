@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { getClienteByEmail, updateCliente } from "@/lib/db/repositories/clientes";
+import {
+  createDireccion,
+  listDireccionesByClienteId,
+  updateDireccion,
+} from "@/lib/db/repositories/clienteDirecciones";
 import { normalizeClienteEmail } from "@/lib/clientes/upsertClienteFromOrder";
 import { getCuentaSessionFromCookies } from "@/lib/cuenta/session";
 
@@ -39,97 +44,55 @@ export async function POST(request: Request) {
   const email = normalizeClienteEmail(session.email);
   const { name, phone, address, city, region } = parsed.data;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const admin = createAdminClient() as any;
-
-  const { data: cliente, error: cErr } = await admin
-    .from("clientes")
-    .select("id")
-    .eq("email", email)
-    .maybeSingle();
-
-  if (cErr || !cliente?.id) {
+  const cliente = await getClienteByEmail(email);
+  if (!cliente) {
     return NextResponse.json({ error: "Cliente no encontrado." }, { status: 404 });
   }
+  const clienteId = cliente.id;
 
-  const clienteId = String(cliente.id);
-
-  const { error: upCliente } = await admin
-    .from("clientes")
-    .update({
-      nombre: name.trim(),
-      telefono: phone.trim(),
-    })
-    .eq("id", clienteId);
-
-  if (upCliente) {
-    console.error("[checkout-save-shipping] cliente", upCliente.message);
+  try {
+    await updateCliente(clienteId, { nombre: name.trim(), telefono: phone.trim() });
+  } catch (error) {
+    console.error("[checkout-save-shipping] cliente", error);
     return NextResponse.json({ error: "No se pudo actualizar el perfil." }, { status: 500 });
   }
 
-  const { data: dirs } = await admin
-    .from("cliente_direcciones")
-    .select("id, direccion, comuna, region, is_default")
-    .eq("cliente_id", clienteId);
-
-  const list = Array.isArray(dirs) ? dirs : [];
+  const list = await listDireccionesByClienteId(clienteId);
   const fp = addressKey(address, city, region);
-  const def = list.find((d: { is_default?: boolean }) => d.is_default) ?? null;
-  const same = list.find(
-    (d: { direccion: string; comuna: string; region: string }) =>
-      addressKey(String(d.direccion), String(d.comuna), String(d.region)) === fp
-  );
+  const def = list.find((d) => d.is_default) ?? null;
+  const same = list.find((d) => addressKey(d.direccion, d.comuna, d.region) === fp);
 
-  async function clearDefaults(): Promise<void> {
-    await admin.from("cliente_direcciones").update({ is_default: false }).eq("cliente_id", clienteId);
-  }
-
-  if (def) {
-    const { error: upD } = await admin
-      .from("cliente_direcciones")
-      .update({
+  try {
+    if (def) {
+      await updateDireccion(def.id, clienteId, {
         direccion: address.trim(),
         comuna: city.trim(),
         region: region.trim(),
         telefono: phone.trim(),
-      })
-      .eq("id", def.id);
-    if (upD) {
-      console.error("[checkout-save-shipping] dir", upD.message);
-      return NextResponse.json({ error: "No se pudo actualizar la dirección." }, { status: 500 });
-    }
-  } else if (same) {
-    await clearDefaults();
-    const { error: upS } = await admin
-      .from("cliente_direcciones")
-      .update({
+      });
+    } else if (same) {
+      await updateDireccion(same.id, clienteId, {
         direccion: address.trim(),
         comuna: city.trim(),
         region: region.trim(),
         telefono: phone.trim(),
         is_default: true,
-      })
-      .eq("id", same.id);
-    if (upS) {
-      console.error("[checkout-save-shipping] dir same", upS.message);
-      return NextResponse.json({ error: "No se pudo actualizar la dirección." }, { status: 500 });
+      });
+    } else {
+      await createDireccion({
+        cliente_id: clienteId,
+        nombre: "Principal",
+        direccion: address.trim(),
+        comuna: city.trim(),
+        region: region.trim(),
+        referencia: null,
+        telefono: phone.trim(),
+        is_default: true,
+      });
     }
-  } else {
-    await clearDefaults();
-    const { error: ins } = await admin.from("cliente_direcciones").insert({
-      cliente_id: clienteId,
-      nombre: "Principal",
-      direccion: address.trim(),
-      comuna: city.trim(),
-      region: region.trim(),
-      referencia: null,
-      telefono: phone.trim(),
-      is_default: true,
-    });
-    if (ins) {
-      console.error("[checkout-save-shipping] insert", ins.message);
-      return NextResponse.json({ error: "No se pudo guardar la dirección." }, { status: 500 });
-    }
+  } catch (error) {
+    console.error("[checkout-save-shipping] dir", error);
+    return NextResponse.json({ error: "No se pudo guardar la dirección." }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true as const });

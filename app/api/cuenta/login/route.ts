@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { compareSync } from "bcryptjs";
 import { z } from "zod";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { getClienteByEmail } from "@/lib/db/repositories/clientes";
 import { normalizeClienteEmail } from "@/lib/clientes/upsertClienteFromOrder";
 import { setCuentaSessionCookie } from "@/lib/cuenta/session";
 
@@ -23,16 +23,11 @@ export async function POST(req: Request) {
     const email = normalizeClienteEmail(parsed.data.email);
     const password = parsed.data.password;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const admin = createAdminClient() as any;
-    const { data: cliente, error } = await admin
-      .from("clientes")
-      .select("email,nombre,password_hash,registered_at")
-      .eq("email", email)
-      .maybeSingle();
-
-    if (error) {
-      console.error("[cuenta-login] error select", error.message);
+    let cliente;
+    try {
+      cliente = await getClienteByEmail(email);
+    } catch (error) {
+      console.error("[cuenta-login] error select", error);
       return NextResponse.json({ error: "No se pudo iniciar sesión." }, { status: 500 });
     }
 

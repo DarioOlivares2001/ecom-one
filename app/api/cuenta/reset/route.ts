@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { hashSync } from "bcryptjs";
 import { z } from "zod";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { getClienteByResetToken, updateCliente } from "@/lib/db/repositories/clientes";
 
 export const runtime = "nodejs";
 
@@ -22,16 +22,11 @@ export async function POST(request: Request) {
 
     const { token, password } = parsed.data;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const admin = createAdminClient() as any;
-    const { data: row, error: selErr } = await admin
-      .from("clientes")
-      .select("id,email,reset_token,reset_token_expires")
-      .eq("reset_token", token)
-      .maybeSingle();
-
-    if (selErr) {
-      console.error("[cuenta-reset] select", selErr.message);
+    let row;
+    try {
+      row = await getClienteByResetToken(token);
+    } catch (selErr) {
+      console.error("[cuenta-reset] select", selErr);
       return NextResponse.json({ error: GENERIC_ERR }, { status: 400 });
     }
 
@@ -45,17 +40,14 @@ export async function POST(request: Request) {
     }
 
     const hashPw = hashSync(password, 12);
-    const { error: upErr } = await admin
-      .from("clientes")
-      .update({
+    try {
+      await updateCliente(row.id, {
         password_hash: hashPw,
         reset_token: null,
         reset_token_expires: null,
-      })
-      .eq("id", row.id);
-
-    if (upErr) {
-      console.error("[cuenta-reset] update", upErr.message);
+      });
+    } catch (upErr) {
+      console.error("[cuenta-reset] update", upErr);
       return NextResponse.json({ error: "No se pudo actualizar la contraseña." }, { status: 500 });
     }
 

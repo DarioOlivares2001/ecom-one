@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/Button";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { listOrdersByEmailCaseInsensitive } from "@/lib/db/repositories/orders";
 import { formatOrderStatus } from "@/lib/orders/formatOrderStatus";
 import { formatPrice } from "@/lib/utils/format";
 import { getCuentaSessionFromCookies } from "@/lib/cuenta/session";
@@ -31,19 +31,12 @@ export default async function CuentaPedidosPage() {
   const session = getCuentaSessionFromCookies();
   if (!session) redirect("/cuenta/login");
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const admin = createAdminClient() as any;
-  const { data, error } = await admin
-    .from("orders")
-    .select("id,order_number,display_code,created_at,total,status")
-    .ilike("customer_email", session.email)
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    console.error("[cuenta-pedidos] error", error.message);
+  let pedidos: CuentaPedido[] = [];
+  try {
+    pedidos = await listOrdersByEmailCaseInsensitive(session.email);
+  } catch (error) {
+    console.error("[cuenta-pedidos] error", error);
   }
-
-  const pedidos: CuentaPedido[] = Array.isArray(data) ? data : [];
 
   return (
     <main className="mx-auto flex min-h-[70vh] w-full max-w-4xl flex-col px-4 py-12">

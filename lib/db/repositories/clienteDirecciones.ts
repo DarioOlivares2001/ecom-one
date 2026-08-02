@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";
 import { clienteDirecciones } from "@/lib/db/schema";
@@ -28,7 +28,8 @@ export async function listDireccionesByClienteId(
   const rows = await db
     .select()
     .from(clienteDirecciones)
-    .where(eq(clienteDirecciones.clienteId, clienteId));
+    .where(eq(clienteDirecciones.clienteId, clienteId))
+    .orderBy(desc(clienteDirecciones.isDefault), asc(clienteDirecciones.createdAt));
   return rows.map(mapClienteDireccion);
 }
 

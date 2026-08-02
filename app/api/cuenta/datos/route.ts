@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { getClienteByEmail, updateCliente } from "@/lib/db/repositories/clientes";
 import { normalizeClienteEmail } from "@/lib/clientes/upsertClienteFromOrder";
 import {
   validateNombreCliente,
@@ -26,15 +26,9 @@ export async function GET() {
   }
 
   const email = normalizeClienteEmail(session.email);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const admin = createAdminClient() as any;
-  const { data, error } = await admin
-    .from("clientes")
-    .select("id,nombre,email,telefono,rut_numero,rut_dv")
-    .eq("email", email)
-    .maybeSingle();
+  const data = await getClienteByEmail(email);
 
-  if (error || !data) {
+  if (!data) {
     return NextResponse.json({ error: "Cliente no encontrado." }, { status: 404 });
   }
 
@@ -102,20 +96,20 @@ export async function PUT(request: Request) {
     rut_dv = g.rut_dv;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const admin = createAdminClient() as any;
-  const { error } = await admin
-    .from("clientes")
-    .update({
+  const existing = await getClienteByEmail(email);
+  if (!existing) {
+    return NextResponse.json({ error: "Cliente no encontrado." }, { status: 404 });
+  }
+
+  try {
+    await updateCliente(existing.id, {
       nombre: nombreTrim,
       telefono,
       rut_numero,
       rut_dv,
-    })
-    .eq("email", email);
-
-  if (error) {
-    console.error("[cuenta-datos] update", error.message);
+    });
+  } catch (error) {
+    console.error("[cuenta-datos] update", error);
     return NextResponse.json({ error: "No se pudo guardar." }, { status: 500 });
   }
 

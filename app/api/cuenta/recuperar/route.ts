@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { getClienteByEmail, updateCliente } from "@/lib/db/repositories/clientes";
 import { normalizeClienteEmail } from "@/lib/clientes/upsertClienteFromOrder";
 import { getStoreSettings } from "@/lib/store-settings/getStoreSettings";
 import { sendResetPasswordEmail } from "@/lib/email/sendResetPasswordEmail";
@@ -25,16 +25,11 @@ export async function POST(request: Request) {
 
     const normEmail = normalizeClienteEmail(parsed.data.email);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const admin = createAdminClient() as any;
-    const { data: row, error: selErr } = await admin
-      .from("clientes")
-      .select("id,email,nombre,password_hash")
-      .eq("email", normEmail)
-      .maybeSingle();
-
-    if (selErr) {
-      console.error("[cuenta-recuperar] select", selErr.message);
+    let row;
+    try {
+      row = await getClienteByEmail(normEmail);
+    } catch (selErr) {
+      console.error("[cuenta-recuperar] select", selErr);
       return NextResponse.json({ ok: true as const });
     }
 
@@ -42,16 +37,13 @@ export async function POST(request: Request) {
       const token = randomUUID();
       const expiresIso = new Date(Date.now() + RESET_TTL_MS).toISOString();
 
-      const { error: upErr } = await admin
-        .from("clientes")
-        .update({
+      try {
+        await updateCliente(row.id, {
           reset_token: token,
           reset_token_expires: expiresIso,
-        })
-        .eq("email", normEmail);
-
-      if (upErr) {
-        console.error("[cuenta-recuperar] update token", upErr.message);
+        });
+      } catch (upErr) {
+        console.error("[cuenta-recuperar] update token", upErr);
         return NextResponse.json({ ok: true as const });
       }
 
@@ -68,10 +60,7 @@ export async function POST(request: Request) {
         });
       } catch (e) {
         console.error("[cuenta-recuperar] email", e);
-        await admin
-          .from("clientes")
-          .update({ reset_token: null, reset_token_expires: null })
-          .eq("email", normEmail);
+        await updateCliente(row.id, { reset_token: null, reset_token_expires: null });
       }
     }
 

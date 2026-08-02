@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { CuentaLinkButton } from "@/components/cuenta/CuentaLinkButton";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { getClienteByEmail } from "@/lib/db/repositories/clientes";
 import { formatPrice } from "@/lib/utils/format";
 import { getCuentaSessionFromCookies } from "@/lib/cuenta/session";
 import { normalizeClienteEmail } from "@/lib/clientes/upsertClienteFromOrder";
@@ -20,20 +20,19 @@ export default async function CuentaIndexPage() {
 
   const sessionEmail = normalizeClienteEmail(session.email);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const admin = createAdminClient() as any;
-  const { data: cliente, error } = await admin
-    .from("clientes")
-    .select("id,nombre,email,total_orders,total_spent,last_order_at,profile_recovery_ack_at")
-    .eq("email", sessionEmail)
-    .maybeSingle();
+  let cliente;
+  try {
+    cliente = await getClienteByEmail(sessionEmail);
+  } catch {
+    cliente = null;
+  }
 
-  if (error || !cliente) {
+  if (!cliente) {
     redirect("/cuenta/login");
   }
 
   const clienteId = String(cliente.id);
-  const recovery = await recoverClienteFromOrderHistory(admin, clienteId, sessionEmail);
+  const recovery = await recoverClienteFromOrderHistory(clienteId, sessionEmail);
   const settings = await getStoreSettings();
 
   const ackAt = cliente.profile_recovery_ack_at != null ? String(cliente.profile_recovery_ack_at) : "";

@@ -1,5 +1,11 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizeClienteEmail } from "@/lib/clientes/upsertClienteFromOrder";
+import { listOrdersByEmailCaseInsensitive } from "@/lib/db/repositories/orders";
+import { getClienteById, updateCliente } from "@/lib/db/repositories/clientes";
+import {
+  createDireccion,
+  listDireccionesByClienteId,
+  updateDireccion,
+} from "@/lib/db/repositories/clienteDirecciones";
 
 export type RecoveredSnapshot = {
   nombre: string;
@@ -33,20 +39,11 @@ function parseShipping(raw: unknown): { direccion: string; comuna: string; regio
   return { direccion, comuna, region };
 }
 
-type DirRow = {
-  id: string;
-  direccion: string;
-  comuna: string;
-  region: string;
-  is_default?: boolean;
-};
-
 /**
  * Importa nombre, teléfono y dirección principal desde el último pedido con el mismo email normalizado.
  * Idempotente: no duplica direcciones (misma dirección+comuna+región) y no pisa nombre/teléfono ya guardados.
  */
 export async function recoverClienteFromOrderHistory(
-  supabase: SupabaseClient,
   clienteId: string,
   normEmail: string
 ): Promise<RecoverFromOrdersResult> {
@@ -55,35 +52,24 @@ export async function recoverClienteFromOrderHistory(
     return { pastOrdersCount: 0, lastSnapshot: null };
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const admin = supabase as any;
-
-  const { data: ordersRaw, error: ordErr } = await admin
-    .from("orders")
-    .select("id, created_at, customer_email, customer_name, customer_phone, shipping_address")
-    .ilike("customer_email", email)
-    .order("created_at", { ascending: false })
-    .limit(100);
-
-  if (ordErr) {
-    console.error("[recover-from-orders] select orders", ordErr.message);
+  let ordersList;
+  try {
+    ordersList = await listOrdersByEmailCaseInsensitive(email, 100);
+  } catch (ordErr) {
+    console.error("[recover-from-orders] select orders", ordErr);
     return { pastOrdersCount: 0, lastSnapshot: null };
   }
 
-  const orders = (ordersRaw ?? []).filter(
-    (o: { customer_email?: string }) => normalizeClienteEmail(String(o.customer_email ?? "")) === email
+  const matchingOrders = ordersList.filter(
+    (o) => normalizeClienteEmail(String(o.customer_email ?? "")) === email
   );
 
-  const pastOrdersCount = orders.length;
+  const pastOrdersCount = matchingOrders.length;
   if (pastOrdersCount === 0) {
     return { pastOrdersCount: 0, lastSnapshot: null };
   }
 
-  const latest = orders[0] as {
-    customer_name?: string | null;
-    customer_phone?: string | null;
-    shipping_address?: unknown;
-  };
+  const latest = matchingOrders[0];
 
   const ship = parseShipping(latest.shipping_address);
   const orderNombre = trimStr(latest.customer_name);
@@ -98,65 +84,55 @@ export async function recoverClienteFromOrderHistory(
     pais: "Chile",
   };
 
-  const { data: clienteRow } = await admin
-    .from("clientes")
-    .select("nombre, telefono")
-    .eq("id", clienteId)
-    .maybeSingle();
-
+  const clienteRow = await getClienteById(clienteId);
   const currentNombre = trimStr(clienteRow?.nombre);
   const currentTel = trimStr(clienteRow?.telefono);
 
-  const patch: Record<string, string> = {};
+  const patch: { nombre?: string; telefono?: string } = {};
   if (!currentNombre && orderNombre) patch.nombre = orderNombre;
   if (!currentTel && orderTel) patch.telefono = orderTel;
 
   if (Object.keys(patch).length) {
-    const { error: upCErr } = await admin.from("clientes").update(patch).eq("id", clienteId);
-    if (upCErr) console.error("[recover-from-orders] update cliente", upCErr.message);
+    try {
+      await updateCliente(clienteId, patch);
+    } catch (upCErr) {
+      console.error("[recover-from-orders] update cliente", upCErr);
+    }
   }
 
-  const { data: dirsRaw } = await admin
-    .from("cliente_direcciones")
-    .select("id, direccion, comuna, region, is_default")
-    .eq("cliente_id", clienteId);
-
-  const dirRows: DirRow[] = Array.isArray(dirsRaw) ? dirsRaw : [];
+  const dirRows = await listDireccionesByClienteId(clienteId);
   const fpOrder = addressKey(ship.direccion, ship.comuna, ship.region);
   const hasConcreteAddr =
     ship.direccion.length >= 4 && ship.comuna.length >= 2 && ship.region.length >= 2;
 
-  const rowFp = (r: DirRow) => addressKey(r.direccion, r.comuna, r.region);
+  const rowFp = (r: (typeof dirRows)[number]) => addressKey(r.direccion, r.comuna, r.region);
   const hasDefault = dirRows.some((r) => r.is_default);
   const sameFpRow = dirRows.find((r) => rowFp(r) === fpOrder);
-
-  async function clearDefaults(): Promise<void> {
-    await admin.from("cliente_direcciones").update({ is_default: false }).eq("cliente_id", clienteId);
-  }
 
   if (hasConcreteAddr && fpOrder !== "||") {
     if (sameFpRow) {
       if (!hasDefault) {
-        await clearDefaults();
-        const { error: e2 } = await admin
-          .from("cliente_direcciones")
-          .update({ is_default: true })
-          .eq("id", sameFpRow.id);
-        if (e2) console.error("[recover-from-orders] set default", e2.message);
+        try {
+          await updateDireccion(sameFpRow.id, clienteId, { is_default: true });
+        } catch (e2) {
+          console.error("[recover-from-orders] set default", e2);
+        }
       }
     } else if (!hasDefault) {
-      await clearDefaults();
-      const { error: insE } = await admin.from("cliente_direcciones").insert({
-        cliente_id: clienteId,
-        nombre: "Principal",
-        direccion: ship.direccion,
-        comuna: ship.comuna,
-        region: ship.region,
-        referencia: null,
-        telefono: orderTel || null,
-        is_default: true,
-      });
-      if (insE) console.error("[recover-from-orders] insert dir", insE.message);
+      try {
+        await createDireccion({
+          cliente_id: clienteId,
+          nombre: "Principal",
+          direccion: ship.direccion,
+          comuna: ship.comuna,
+          region: ship.region,
+          referencia: null,
+          telefono: orderTel || null,
+          is_default: true,
+        });
+      } catch (insE) {
+        console.error("[recover-from-orders] insert dir", insE);
+      }
     }
   }
 

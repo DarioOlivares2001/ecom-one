@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { getClienteByEmail, updateCliente } from "@/lib/db/repositories/clientes";
 import { normalizeClienteEmail } from "@/lib/clientes/upsertClienteFromOrder";
 import { getCuentaSessionFromCookies } from "@/lib/cuenta/session";
 
@@ -14,15 +14,14 @@ export async function POST() {
   const email = normalizeClienteEmail(session.email);
   const nowIso = new Date().toISOString();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const admin = createAdminClient() as any;
-  const { error } = await admin
-    .from("clientes")
-    .update({ profile_recovery_ack_at: nowIso })
-    .eq("email", email);
-
-  if (error) {
-    console.error("[profile-recovery-ack]", error.message);
+  try {
+    const cliente = await getClienteByEmail(email);
+    if (!cliente) {
+      return NextResponse.json({ error: "No se pudo guardar." }, { status: 404 });
+    }
+    await updateCliente(cliente.id, { profile_recovery_ack_at: nowIso });
+  } catch (error) {
+    console.error("[profile-recovery-ack]", error);
     return NextResponse.json({ error: "No se pudo guardar." }, { status: 500 });
   }
 

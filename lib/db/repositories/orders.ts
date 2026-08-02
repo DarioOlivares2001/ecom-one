@@ -60,6 +60,20 @@ export async function listOrdersByEmail(email: string): Promise<Order[]> {
   return rows.map(mapOrder);
 }
 
+/** Búsqueda case-insensitive por email (recuperación de datos, "mis pedidos" de cuenta). */
+export async function listOrdersByEmailCaseInsensitive(
+  email: string,
+  limit?: number
+): Promise<Order[]> {
+  const query = db
+    .select()
+    .from(orders)
+    .where(sql`lower(${orders.customerEmail}) = lower(${email})`)
+    .orderBy(desc(orders.createdAt));
+  const rows = limit ? await query.limit(limit) : await query;
+  return rows.map(mapOrder);
+}
+
 export async function listOrdersForAdmin(): Promise<Order[]> {
   const rows = await db.select().from(orders).orderBy(desc(orders.createdAt));
   return rows.map(mapOrder);
