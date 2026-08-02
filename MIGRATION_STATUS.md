@@ -4,7 +4,7 @@ Este documento se actualiza durante toda la migración. Última actualización: 
 
 ## Fase actual
 
-**Fase 4 — Reemplazo de consultas por módulo** (en curso).
+**Fase 5 — Autenticación y sesiones propias** (en curso).
 
 ## Resumen de fases
 
@@ -14,6 +14,7 @@ Este documento se actualiza durante toda la migración. Última actualización: 
 | 1. Auditoría de Supabase | ✅ Completada |
 | 2. Esquema completo en Neon | ✅ Completada |
 | 3. Capa de acceso a datos | ✅ Completada |
+| 4. Reemplazo de consultas por módulo | ✅ Completada (salvo Storage, ver nota) |
 | 4. Reemplazo de consultas por módulo | ⏳ Pendiente |
 | 5. Autenticación y sesiones | ⏳ Pendiente |
 | 6. Cloudflare R2 | ⏳ Pendiente |
@@ -134,6 +135,36 @@ Archivos creados:
 Orden de trabajo (según catálogo de módulos de la mission): catálogo público → detalle de producto → variantes/descuentos → recomendaciones/upsells → reseñas → configuración de tienda → admin productos → admin pedidos → admin clientes → admin usuarios → cuenta de cliente → direcciones → checkout → Flow create → Flow webhook → cron pedidos vencidos → confirmación de pago/stock → tracking Meta/CAPI → scripts administrativos.
 
 Los helpers de `lib/supabase/*` NO se eliminan todavía — se retiran recién en la Fase 7, cuando `rg` confirme 0 consumidores restantes.
+
+### Fase 4 — Cierre
+
+Todos los módulos de datos (no-storage) migrados a Drizzle: catálogo, producto, variantes, reseñas (público + admin), recomendaciones/upsells, landing, admin de productos (CRUD completo), checkout, Flow (create/webhook), confirmación de pago/stock, seguimiento público, cron de pedidos vencidos, admin de pedidos + dashboard, store_settings (config general + Meta + Clarity), admin de usuarios, admin de clientes, cuenta de cliente completa (login/registro/recuperación/reset/datos/direcciones/checkout-prefill/checkout-save-shipping), y `scripts/create-admin-user.ts`.
+
+Verificado con `rg`: `lib/supabase/server.ts` y `lib/supabase/client.ts` ya no tienen **ningún** consumidor. `createAdminClient()` solo sigue usándose para **Storage** (subida de imágenes) en 4 archivos — deliberadamente diferido a la Fase 6 (R2), ya que migrar esas llamadas antes de tener R2 funcionando dejaría el admin sin poder subir imágenes:
+- `app/admin/productos/nuevo/actions.ts` (imágenes de producto — la parte de BD de este archivo ya está en Drizzle)
+- `app/api/upload/logo/route.ts`, `app/api/upload/favicon/route.ts`, `app/api/upload/hero/route.ts`
+
+Scripts de imágenes (`scripts/{list,optimize,cleanup-original,fix}-product-image*.mjs`) también quedan pendientes de Fase 6 por la misma razón (leen/escriben Storage).
+
+**tsc --noEmit: 0 errores** en todos los checkpoints de esta fase.
+
+## Fase 5 — Autenticación y sesiones propias (completada)
+
+- Eliminado el fallback a `SUPABASE_SERVICE_ROLE_KEY` en `lib/admin/session.ts` y `lib/cuenta/session.ts`. Ambas funciones (`getAdminSessionSecret`/`getSessionSecret`) ahora exigen exclusivamente `ADMIN_SESSION_SECRET`/`CUENTA_SESSION_SECRET` y lanzan error explícito si faltan.
+- `.env.local` no tenía ninguna de las dos variables (ni `SUPABASE_SERVICE_ROLE_KEY`, es decir el login ya estaba roto antes de este cambio) → se generaron con `crypto.randomBytes(32).toString('hex')` y se agregaron directamente al archivo **sin mostrarlas nunca en la terminal ni en este documento**. Mismo tratamiento para `CRON_SECRET` (protege `/api/cron/cancel-stale-orders`, tampoco existía).
+- `.env.example` actualizado: nueva sección de secretos de sesión (con el comando para regenerarlos) y `CRON_SECRET`. Las variables de Supabase se mantienen ahí por ahora — se retiran en la Fase 7.
+- Revisión de seguridad de sesiones (checklist de la misión), todo correcto y sin cambios necesarios más allá del fallback:
+  - `httpOnly: true` en ambas cookies.
+  - `secure: process.env.NODE_ENV === "production"`.
+  - `sameSite: "lax"`.
+  - Expiración: admin 12h, cuenta 30 días, token de reset de contraseña 1h.
+  - Comparación de firma HMAC con `timingSafeEqual` (ambas sesiones).
+  - Hash de contraseña con `bcryptjs` (cost 12) en todos los flujos (admin, cliente, reset).
+  - Recuperación de contraseña: token `randomUUID()` de un solo uso con expiración; `POST /api/cuenta/recuperar` siempre responde `{ok:true}` exista o no la cuenta (previene enumeración de emails) — comportamiento preexistente, no tocado.
+  - Protección de rutas admin: `app/admin/layout.tsx` verifica `getAdminSessionFromCookies()` y redirige a `/admin/login` — preexistente, verificado intacto tras la migración.
+- `rg SUPABASE_SERVICE_ROLE_KEY` confirma cero usos restantes como fallback de secretos; las únicas referencias que quedan son `.env.example` (pendiente Fase 7), los tres archivos `lib/supabase/*.ts` (pendiente Fase 7) y los scripts de imágenes (pendiente Fase 6).
+
+**tsc --noEmit: 0 errores.**
 
 ## Bloqueos externos
 

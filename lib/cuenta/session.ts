@@ -19,10 +19,7 @@ function base64UrlDecode(input: string): string {
 }
 
 function getSessionSecret(): string {
-  const secret =
-    process.env.CUENTA_SESSION_SECRET?.trim() ||
-    process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ||
-    "";
+  const secret = process.env.CUENTA_SESSION_SECRET?.trim() || "";
   if (!secret) throw new Error("Falta CUENTA_SESSION_SECRET para sesión de cuenta.");
   return secret;
 }

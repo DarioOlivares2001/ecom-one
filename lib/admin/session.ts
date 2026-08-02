@@ -21,10 +21,7 @@ function base64UrlDecode(input: string): string {
 }
 
 function getAdminSessionSecret(): string {
-  const secret =
-    process.env.ADMIN_SESSION_SECRET?.trim() ||
-    process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ||
-    "";
+  const secret = process.env.ADMIN_SESSION_SECRET?.trim() || "";
   if (!secret) throw new Error("Falta ADMIN_SESSION_SECRET para sesión admin.");
   return secret;
 }
