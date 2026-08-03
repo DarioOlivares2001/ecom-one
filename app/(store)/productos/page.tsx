@@ -3,6 +3,7 @@ import { performance } from "node:perf_hooks";
 import { ProductsClient } from "./ProductsClient";
 import type { Product } from "@/lib/db/types";
 import { listActiveProducts } from "@/lib/db/repositories";
+import { toPublicProducts } from "@/lib/product/toPublicProduct";
 
 export const metadata: Metadata = {
   title: "Productos",
@@ -47,5 +48,5 @@ export default async function ProductosPage() {
     console.log(`${PERF_PREFIX} total server ms:`, Math.round(totalMs));
   }
 
-  return <ProductsClient initialProducts={products} />;
+  return <ProductsClient initialProducts={toPublicProducts(products)} />;
 }

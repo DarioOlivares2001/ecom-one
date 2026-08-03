@@ -105,6 +105,7 @@ type EditableProduct = {
   variants: Record<string, string[]> | null;
   options: Array<{ name: string; values: string[] }> | null;
   images: string[] | null;
+  dropi_product_url?: string | null;
   discount_enabled?: boolean | null;
   discount_max_percent?: number | null;
   discount_label?: string | null;
@@ -166,6 +167,7 @@ export function EditProductoForm({
     cost_price: product.cost_price != null ? String(product.cost_price) : "",
     stock: product.stock != null ? String(product.stock) : "0",
     category: normalizeProductCategory(product.category),
+    dropi_product_url: product.dropi_product_url ?? "",
   });
   const [description, setDescription] = useState<string>(product.description ?? "");
   const [active, setActive] = useState<boolean>(product.active ?? true);
@@ -743,6 +745,17 @@ export function EditProductoForm({
                   </option>
                 ))}
               </select>
+            </Card>
+
+            <Card title="Dropi (opcional)">
+              <Input
+                label="URL del producto en Dropi"
+                type="url"
+                placeholder="https://app.dropi.cl/..."
+                value={form.dropi_product_url}
+                onChange={field("dropi_product_url")}
+                helperText="Enlace al producto dentro de app.dropi.cl o app.dropi.co. Solo lo ve el admin, nunca aparece en la tienda pública."
+              />
             </Card>
 
             <ProductVolumeDiscountSection

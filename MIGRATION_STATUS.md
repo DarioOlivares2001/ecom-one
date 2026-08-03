@@ -4,7 +4,7 @@ Este documento se actualiza durante toda la migración. Última actualización: 
 
 ## Fase actual
 
-**Migración completa (Fases 0–10) + Fase 11 (correcciones instalación vacía) + Fase 12 (fix de persistencia de `store_settings`) + Fase 13 (aislar `lib/db` del bundle de cliente en `/cuenta/*`).** Ver checklist de despliegue más abajo antes de lanzar a producción.
+**Migración completa (Fases 0–10) + Fase 11 (correcciones instalación vacía) + Fase 12 (fix de persistencia de `store_settings`) + Fase 13 (aislar `lib/db` del bundle de cliente en `/cuenta/*`) + Fase 14 (enlace manual a Dropi).** Ver checklist de despliegue más abajo antes de lanzar a producción.
 
 ## Resumen de fases
 
@@ -24,6 +24,7 @@ Este documento se actualiza durante toda la migración. Última actualización: 
 | 11. Correcciones instalación nueva/vacía (mocks, imágenes, carrito, admin, store_settings) | ✅ Completada |
 | 12. Fix de persistencia singleton en `store_settings` | ✅ Completada |
 | 13. Aislar `lib/db`/Drizzle del bundle de cliente en `/cuenta/*` | ✅ Completada |
+| 14. Enlace manual a Dropi (producto + pedido) | ✅ Completada |
 
 ---
 
@@ -438,6 +439,57 @@ Se encontraron **5 componentes cliente** con este patrón: `app/(store)/cuenta/l
 - `npx tsc --noEmit` y `npm run build`: sin errores.
 
 No se tocó `DATABASE_URL`, `.env.local`, ningún secreto, Supabase, ni la configuración de Neon — el fix fue enteramente de organización de imports (cuál código corre en el navegador vs. en el servidor).
+
+## Fase 14 — Enlace manual a Dropi (producto + pedido) (completada)
+
+Solo un link que el admin pega a mano en cada producto y usa para abrir Dropi en una pestaña nueva y crear el pedido ahí manualmente. **Sin API, sin scraping, sin automatización de compra ni credenciales de Dropi guardadas en ningún lugar** — tal como se pidió.
+
+### Esquema y persistencia
+
+- `lib/db/schema/products.ts`: columna nueva `dropi_product_url` (`text`, nullable). Migración `drizzle/0004_add-dropi-product-url.sql` (`ALTER TABLE products ADD COLUMN dropi_product_url text`), aplicada a la base de desarrollo.
+- `lib/db/types.ts`: `Product.dropi_product_url: string | null`. `OrderItem.dropi_product_url?: string | null` — snapshot por línea de pedido (ver más abajo).
+- `lib/db/repositories/products.ts`: `mapProduct`, `ProductInsertInput`/`ProductUpdateInput`, `toInsertValues`/`toUpdateValues` actualizados para leer/escribir la columna.
+
+### Validación en servidor
+
+Nuevo `lib/products/dropiLink.ts` — `validateDropiProductUrl()`: vacío es válido (campo opcional, sin enlace); si viene algo, exige `https://` y que el host esté en `DROPI_ALLOWED_HOSTS = ["app.dropi.cl", "app.dropi.co"]` (array configurable, fácil de ampliar). Se usa en `createProductAction`/`updateProductAction` (`app/admin/productos/nuevo/actions.ts`) **antes** de tocar la base — si no valida, se devuelve el error al formulario y no se guarda nada.
+
+### UX de administración
+
+- Campo "URL del producto en Dropi" agregado como una Card nueva ("Dropi (opcional)") tanto en `app/admin/productos/nuevo/page.tsx` como en `app/admin/productos/[id]/EditProductoForm.tsx`, justo después de "Categoría". Mismo patrón de estado (`form.dropi_product_url`) que el resto de los campos — se envía solo agregándolo al objeto `form`, sin tocar la lógica de submit existente.
+- Producto sin variantes/pedidos previos: el campo queda vacío, no se muestra ningún botón en ningún lado — compatibilidad total con productos existentes confirmada.
+
+### Snapshot por línea de pedido
+
+`lib/checkout/recalculateCheckoutOrder.ts`: `ProductRow` (el pick usado internamente) y `RecalculatedOrderLine` ahora incluyen `dropi_product_url`; `buildOrderLine` copia el valor del producto al momento de armar la línea. Como `items` se persiste tal cual como JSONB (`app/api/flow/create/route.ts`), el snapshot queda guardado en cada pedido nuevo sin tocar el resto del cálculo de precios/stock/envío.
+
+### Botón "Pedir en Dropi" en el detalle de pedido admin
+
+`app/admin/pedidos/[id]/page.tsx`: además de la orden, resuelve un mapa `productId → dropi_product_url` con el enlace **actual** de cada producto de la orden (`getProductsByIds`), y se lo pasa a `OrderDetail` como fallback. `OrderDetail.tsx`: por cada línea, `resolveDropiUrl()` prioriza el snapshot de la línea (`item.dropi_product_url`) y si no existe cae al mapa de fallback; si ninguno existe, no se renderiza nada. El botón (`target="_blank" rel="noopener noreferrer"`, ícono + texto "Pedir en Dropi") aparece pegado a esa línea específica, nunca como botón global — un pedido con varios productos Dropi muestra un botón por cada uno.
+
+### El enlace nunca llega a la tienda pública ni al cliente
+
+- Nuevo `lib/product/toPublicProduct.ts`: `toPublicProduct()`/`toPublicProducts()` fuerzan `dropi_product_url` a `null` antes de pasar un producto a un componente `"use client"` del storefront — Next.js serializa cualquier prop que cruce ese límite al bundle del navegador, así que no bastaba con "no renderizarlo".
+- Aplicado en `app/(store)/productos/page.tsx` (catálogo → `ProductsClient`) y `app/(store)/productos/[slug]/page.tsx` (ficha → `ProductClient`).
+- `app/api/orders/status/route.ts` (la única API pública que expone `items` de una orden, para el Purchase de Meta Pixel del navegador en `/checkout/confirmacion`): antes devolvía el array crudo de `items` completo; ahora se mapea a un subconjunto explícito (`product_id`, `price`, `quantity`) — nunca el objeto de línea completo. Esto ya era una mejora de buena práctica independiente del campo de Dropi, pero se corrigió acá porque de otro modo habría sido el vector de filtración exacto que la tarea pedía evitar.
+- Revisado y confirmado seguro sin cambios: `/api/upsells` y `/api/checkout/recommendations` (arman objetos explícitos campo por campo, nunca `...spread` del producto crudo); `SeguimientoOrderView.tsx`/`SeguimientoTimeline.tsx` (Server Components, sin límite cliente/servidor que serialice el objeto — alcanza con no renderizar el campo, y no se renderiza); plantillas de email (`orderCustomer.ts` solo lee `name`/`quantity`/`price` de cada línea).
+- **Verificado con evidencia**: se creó un producto de prueba con enlace real, se confirmó que aparece en el HTML del form admin (`value="https://app.dropi.cl/..."`), y que en la ficha pública (`/productos/producto-dropi-test`) el HTML servido contiene literalmente `"dropi_product_url":null` (la clave existe como parte del shape serializado, pero el valor real nunca viaja) y ninguna coincidencia de `app.dropi.cl` ni de la URL completa en ningún punto del catálogo ni la ficha pública.
+
+### Bug preexistente encontrado y corregido (no introducido por esta sesión)
+
+Al implementar el fallback "enlace actual del producto" para pedidos viejos, `getProductsByIds()` (`lib/db/repositories/products.ts`) lanzaba `NeonDbError: malformed array literal` con **cualquier** cantidad de ids (1 o más) — el patrón `sql\`${products.id} = ANY(${ids})\`` no serializa bien el array a través de Drizzle + el driver HTTP de Neon (confirmado que el mismo array SÍ funciona con el cliente `neon()` crudo, aislando el problema a ese patrón específico de Drizzle). Este mismo patrón también estaba en `getVariantsByIds` dentro de `lib/checkout/recalculateCheckoutOrder.ts` — es decir, **el cálculo de precios del checkout para productos con variantes también estaba afectado**. Corregido en ambos lugares usando el operador `inArray()` de Drizzle (ya usado con éxito en otro lugar del proyecto, `lib/db/repositories/orders.ts`), que sí serializa el array correctamente. Verificado: el fallback de Dropi (que depende de esta función) pasó de fallar silenciosamente (mapa vacío, capturado por un `try/catch`) a funcionar correctamente tras el fix.
+
+### Verificación con evidencia (contra Neon real, datos de prueba borrados al terminar)
+
+1. `validateDropiProductUrl`: 9 casos (vacío, null, `app.dropi.cl` válido, `app.dropi.co` válido, `http://` rechazado, dominio no permitido rechazado, subdominio rechazado, URL malformada rechazada, `dropi.cl` sin `app.` rechazado) — todos con el resultado esperado.
+2. Producto creado con URL válida → persistida correctamente (verificado por lectura directa).
+3. Producto editado (cambio de nombre) sin tocar el campo → `dropi_product_url` se conserva intacto.
+4. Pedido de prueba con 2 líneas (una con snapshot propio, otra sin URL) → el detalle admin muestra **exactamente un** botón "Pedir en Dropi", con `target="_blank"` y `rel="noopener noreferrer"`, solo en la línea correspondiente.
+5. Pedido "viejo" simulado (línea sin `dropi_product_url` en el snapshot) → el fallback al enlace actual del producto funciona y el botón aparece igual.
+6. Producto sin URL de Dropi → cero botones, en ningún pedido.
+7. `npx tsc --noEmit` y `npm run build`: sin errores.
+
+No se tocó el checkout comercial, precios, stock ni la experiencia pública de Vitanara más allá del fix de `inArray` (que es una corrección de bug, no un cambio de comportamiento/precio/stock) y la redacción del campo nuevo hacia el cliente.
 
 ## Bloqueos externos
 

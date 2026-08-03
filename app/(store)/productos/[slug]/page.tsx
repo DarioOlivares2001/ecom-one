@@ -9,6 +9,7 @@ import {
   listActiveVariantsByProductId,
 } from "@/lib/db/repositories";
 import { pickProductUpsellSuggestions } from "@/lib/product/upsell";
+import { toPublicProduct } from "@/lib/product/toPublicProduct";
 
 interface Props {
   params: { slug: string };
@@ -86,7 +87,7 @@ export default async function ProductPage({ params }: Props) {
 
   return (
     <ProductClient
-      product={product}
+      product={toPublicProduct(product)}
       reviews={reviews}
       variants={variants}
       upsellSuggestions={upsellSuggestions}

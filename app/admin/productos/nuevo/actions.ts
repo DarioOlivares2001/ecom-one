@@ -20,6 +20,7 @@ import {
   volumeDiscountToJsonFields,
 } from "@/lib/admin/productVolumeDiscounts";
 import { parseProductSectionsFromFormData } from "@/lib/product/sections/parseFromFormData";
+import { validateDropiProductUrl } from "@/lib/products/dropiLink";
 
 export async function createProductAction(
   formData: FormData
@@ -170,6 +171,12 @@ export async function createProductAction(
   const sectionsParsed = parseProductSectionsFromFormData(formData);
   if (!sectionsParsed.ok) return { error: sectionsParsed.error };
 
+  // Enlace manual a Dropi: opcional, pero si viene debe ser https y de un
+  // dominio oficial (app.dropi.cl / app.dropi.co) — se valida en servidor y
+  // nunca se guarda si no pasa la validación.
+  const dropiValidation = validateDropiProductUrl(formData.get("dropi_product_url") as string | null);
+  if (!dropiValidation.ok) return { error: dropiValidation.error };
+
   let productData: { id: string; slug: string };
   try {
     productData = await createProduct({
@@ -187,6 +194,7 @@ export async function createProductAction(
       options: hasVariants ? options : null,
       active: formData.get("active") === "true",
       product_sections: sectionsParsed.data,
+      dropi_product_url: dropiValidation.url,
       ...volumeFields,
     });
   } catch (error) {
@@ -388,6 +396,12 @@ export async function updateProductAction(
   const sectionsParsed = parseProductSectionsFromFormData(formData);
   if (!sectionsParsed.ok) return { error: sectionsParsed.error };
 
+  // Enlace manual a Dropi: opcional, pero si viene debe ser https y de un
+  // dominio oficial (app.dropi.cl / app.dropi.co) — se valida en servidor y
+  // nunca se guarda si no pasa la validación.
+  const dropiValidation = validateDropiProductUrl(formData.get("dropi_product_url") as string | null);
+  if (!dropiValidation.ok) return { error: dropiValidation.error };
+
   try {
     await updateProduct(id, {
       name: (formData.get("name") as string).trim(),
@@ -404,6 +418,7 @@ export async function updateProductAction(
       options: hasVariants ? options : null,
       active: formData.get("active") === "true",
       product_sections: sectionsParsed.data,
+      dropi_product_url: dropiValidation.url,
       ...volumeFields,
     });
   } catch (error) {

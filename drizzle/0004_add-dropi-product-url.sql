@@ -1,0 +1,1 @@
+ALTER TABLE "products" ADD COLUMN "dropi_product_url" text;

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, MapPin, Package, ChevronDown, Workflow, MessageCircle } from "lucide-react";
+import { ArrowLeft, MapPin, Package, ChevronDown, Workflow, MessageCircle, ExternalLink } from "lucide-react";
 import { formatOrderStatus, normalizeOrderStatusKey } from "@/lib/orders/formatOrderStatus";
 import {
   getOrderPersistedTotals,
@@ -80,6 +80,25 @@ function formatPhoneDisplay(phone: string | null | undefined): string {
   return raw;
 }
 
+/**
+ * Enlace de Dropi para una línea de pedido: prioriza el snapshot guardado en
+ * la propia línea (`item.dropi_product_url`, tal como estaba al momento del
+ * pedido); si no existe (pedidos viejos, de antes de este campo), cae al
+ * enlace *actual* del producto (`productDropiUrls`). Si ninguno existe,
+ * devuelve `null` y el botón no se muestra.
+ */
+function resolveDropiUrl(
+  item: { product_id?: unknown; dropi_product_url?: unknown },
+  productDropiUrls: Record<string, string | null> | undefined
+): string | null {
+  const fromLine = typeof item.dropi_product_url === "string" ? item.dropi_product_url.trim() : "";
+  if (fromLine) return fromLine;
+
+  const productId = typeof item.product_id === "string" ? item.product_id : null;
+  const fallback = productId ? productDropiUrls?.[productId] : null;
+  return fallback && fallback.trim() ? fallback.trim() : null;
+}
+
 function buildMapsQuery(addr: Record<string, unknown>): string {
   const line1 =
     addr.direccion != null
@@ -97,7 +116,16 @@ function buildMapsQuery(addr: Record<string, unknown>): string {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function OrderDetail({ order, storeName }: { order: any; storeName: string }) {
+export function OrderDetail({
+  order,
+  storeName,
+  productDropiUrls,
+}: {
+  order: any; // eslint-disable-line @typescript-eslint/no-explicit-any
+  storeName: string;
+  /** Enlace de Dropi actual del producto por id — fallback si la línea no trae su propio snapshot. */
+  productDropiUrls?: Record<string, string | null>;
+}) {
   const [currentStatus, setCurrentStatus] = useState<string>(() => normalizeOrderStatusKey(order.status));
   const [status, setStatus] = useState<string>(() => normalizeOrderStatusKey(order.status));
   const [saving, setSaving] = useState(false);
@@ -430,39 +458,53 @@ export function OrderDetail({ order, storeName }: { order: any; storeName: strin
           ) : (
             <div className="flex flex-col divide-y divide-zinc-100">
               {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-              {items.map((item: any, i: number) => (
-                <div key={i} className="flex items-start gap-3 py-2 first:pt-0 last:pb-0">
-                  <div className="h-12 w-12 shrink-0 overflow-hidden rounded-md border border-zinc-200 bg-zinc-100">
-                    {item.image ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={item.image}
-                        alt={item.name ?? "Producto"}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center">
-                        <Package className="h-4 w-4 text-zinc-300" strokeWidth={1} />
-                      </div>
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-zinc-900">
-                      {item.name ?? "Producto"}
+              {items.map((item: any, i: number) => {
+                const dropiUrl = resolveDropiUrl(item, productDropiUrls);
+                return (
+                  <div key={i} className="flex items-start gap-3 py-2 first:pt-0 last:pb-0">
+                    <div className="h-12 w-12 shrink-0 overflow-hidden rounded-md border border-zinc-200 bg-zinc-100">
+                      {item.image ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={item.image}
+                          alt={item.name ?? "Producto"}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center">
+                          <Package className="h-4 w-4 text-zinc-300" strokeWidth={1} />
+                        </div>
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-zinc-900">
+                        {item.name ?? "Producto"}
+                      </p>
+                      {item.variant ? (
+                        <p className="truncate text-[10px] text-zinc-400">{item.variant}</p>
+                      ) : null}
+                      <p className="mt-0.5 text-[11px] text-zinc-500">
+                        {formatPrice(Math.round(Number(item.unit_price ?? item.price) || 0))} ×{" "}
+                        {item.quantity ?? 1}
+                      </p>
+                      {dropiUrl ? (
+                        <a
+                          href={dropiUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-1.5 inline-flex h-6 items-center gap-1 rounded-md border border-orange-200 bg-orange-50 px-2 text-[10px] font-semibold text-orange-700 hover:bg-orange-100"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                          Pedir en Dropi
+                        </a>
+                      ) : null}
+                    </div>
+                    <p className="shrink-0 text-sm font-semibold tabular-nums text-zinc-900">
+                      {formatPrice(getPersistedLineAmount(item as Record<string, unknown>))}
                     </p>
-                    {item.variant ? (
-                      <p className="truncate text-[10px] text-zinc-400">{item.variant}</p>
-                    ) : null}
-                    <p className="mt-0.5 text-[11px] text-zinc-500">
-                      {formatPrice(Math.round(Number(item.unit_price ?? item.price) || 0))} ×{" "}
-                      {item.quantity ?? 1}
-                    </p>
                   </div>
-                  <p className="shrink-0 text-sm font-semibold tabular-nums text-zinc-900">
-                    {formatPrice(getPersistedLineAmount(item as Record<string, unknown>))}
-                  </p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

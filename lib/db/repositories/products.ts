@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, gt, isNull, ne, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, ne, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";
 import { products } from "@/lib/db/schema";
@@ -25,6 +25,7 @@ export function mapProduct(row: ProductRow): Product {
     options: row.options as Product["options"],
     meta_title: row.metaTitle,
     meta_desc: row.metaDesc,
+    dropi_product_url: row.dropiProductUrl,
     active: row.active,
     discount_enabled: row.discountEnabled,
     discount_max_percent: Number(row.discountMaxPercent),
@@ -66,7 +67,7 @@ export async function getProductById(id: string): Promise<Product | null> {
 
 export async function getProductsByIds(ids: string[]): Promise<Product[]> {
   if (ids.length === 0) return [];
-  const rows = await db.select().from(products).where(sql`${products.id} = ANY(${ids})`);
+  const rows = await db.select().from(products).where(inArray(products.id, ids));
   return rows.map(mapProduct);
 }
 
@@ -178,6 +179,7 @@ export interface ProductInsertInput {
   variants?: unknown;
   meta_title?: string | null;
   meta_desc?: string | null;
+  dropi_product_url?: string | null;
   active?: boolean;
   discount_enabled?: boolean;
   discount_max_percent?: number;
@@ -207,6 +209,7 @@ function toInsertValues(input: ProductInsertInput) {
     variants: input.variants ?? null,
     metaTitle: input.meta_title ?? null,
     metaDesc: input.meta_desc ?? null,
+    dropiProductUrl: input.dropi_product_url ?? null,
     active: input.active ?? true,
     discountEnabled: input.discount_enabled ?? false,
     discountMaxPercent:
@@ -234,6 +237,7 @@ function toUpdateValues(input: ProductUpdateInput) {
   if (input.variants !== undefined) values.variants = input.variants;
   if (input.meta_title !== undefined) values.metaTitle = input.meta_title;
   if (input.meta_desc !== undefined) values.metaDesc = input.meta_desc;
+  if (input.dropi_product_url !== undefined) values.dropiProductUrl = input.dropi_product_url;
   if (input.active !== undefined) values.active = input.active;
   if (input.discount_enabled !== undefined) values.discountEnabled = input.discount_enabled;
   if (input.discount_max_percent !== undefined)

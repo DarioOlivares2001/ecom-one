@@ -41,6 +41,9 @@ export const products = pgTable(
     metaTitle: text("meta_title"),
     metaDesc: text("meta_desc"),
 
+    /** Enlace manual al producto en Dropi (solo admin, nunca visible en la tienda pública). */
+    dropiProductUrl: text("dropi_product_url"),
+
     active: boolean("active").notNull().default(true),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
 

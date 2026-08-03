@@ -31,6 +31,8 @@ export interface Product {
   options: Json | null;
   meta_title: string | null;
   meta_desc: string | null;
+  /** Enlace manual al producto en Dropi. Solo admin — nunca se expone en la tienda pública. */
+  dropi_product_url: string | null;
   active: boolean;
   discount_enabled: boolean;
   discount_max_percent: number;
@@ -219,4 +221,11 @@ export interface OrderItem {
   quantity: number;
   image: string;
   variant?: string;
+  /**
+   * Copia del enlace de Dropi del producto al momento del pedido (o `null` si
+   * no tenía). Se guarda como snapshot para que editar/borrar el enlace en el
+   * producto no rompa pedidos ya creados. Solo se muestra en el detalle de
+   * pedido del admin — nunca en la tienda pública ni al cliente.
+   */
+  dropi_product_url?: string | null;
 }

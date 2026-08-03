@@ -108,6 +108,7 @@ export default function NuevoProductoPage() {
     cost_price: "",
     stock: "0",
     category: "",
+    dropi_product_url: "",
   });
   const [description, setDescription] = useState("");
   const [active, setActive] = useState(true);
@@ -633,6 +634,17 @@ export default function NuevoProductoPage() {
                   </option>
                 ))}
               </select>
+            </Card>
+
+            <Card title="Dropi (opcional)">
+              <Input
+                label="URL del producto en Dropi"
+                type="url"
+                placeholder="https://app.dropi.cl/..."
+                value={form.dropi_product_url}
+                onChange={field("dropi_product_url")}
+                helperText="Enlace al producto dentro de app.dropi.cl o app.dropi.co. Solo lo ve el admin, nunca aparece en la tienda pública."
+              />
             </Card>
 
             <ProductVolumeDiscountSection

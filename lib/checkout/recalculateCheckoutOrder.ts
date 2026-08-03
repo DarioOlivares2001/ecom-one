@@ -2,7 +2,7 @@ import type { Product, ProductVariant } from "@/lib/db/types";
 import { getProductsByIds } from "@/lib/db/repositories/products";
 import { db } from "@/lib/db/client";
 import { productVariants as productVariantsTable } from "@/lib/db/schema";
-import { sql } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import { mapProductVariant } from "@/lib/db/repositories/productVariants";
 import {
   getApplicableProductDiscount,
@@ -26,6 +26,7 @@ type ProductRow = Pick<
   | "discount_steps"
   | "discount_label"
   | "active"
+  | "dropi_product_url"
 >;
 
 type VariantRow = Pick<
@@ -38,7 +39,7 @@ async function getVariantsByIds(ids: string[]): Promise<VariantRow[]> {
   const rows = await db
     .select()
     .from(productVariantsTable)
-    .where(sql`${productVariantsTable.id} = ANY(${ids})`);
+    .where(inArray(productVariantsTable.id, ids));
   return rows.map(mapProductVariant);
 }
 
@@ -58,6 +59,8 @@ export type RecalculatedOrderLine = {
   unit_price: number;
   line_total: number;
   discount_source: OrderLineDiscountSource;
+  /** Snapshot del enlace de Dropi del producto al momento del pedido (o null si no tenía). */
+  dropi_product_url: string | null;
 };
 
 export type RecalculateCheckoutOrderResult =
@@ -207,6 +210,7 @@ function buildOrderLine(params: {
     unit_price: unit,
     line_total: lt,
     discount_source: params.discountSource,
+    dropi_product_url: params.p.dropi_product_url ?? null,
   };
 }
 
