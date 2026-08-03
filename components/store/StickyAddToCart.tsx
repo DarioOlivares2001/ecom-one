@@ -10,7 +10,7 @@ import { pixelEvents } from "@/lib/pixel/events";
 import { formatPrice } from "@/lib/utils/format";
 import { Button } from "@/components/ui/Button";
 import { toast } from "@/components/ui/Toast";
-import type { Product } from "@/lib/supabase/types";
+import type { Product } from "@/lib/db/types";
 import { productRequiresVariantChoice } from "@/lib/product/catalogVariants";
 import { getDiscountedUnitPrice } from "@/lib/discounts";
 

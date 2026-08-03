@@ -1,4 +1,4 @@
-import type { Json } from "@/lib/supabase/types";
+import type { Json } from "@/lib/db/types";
 import { SHOW_VOLUME_DISCOUNTS } from "@/lib/config/features";
 
 /** Paso de descuento por cantidad mínima en carrito (misma línea / producto). */

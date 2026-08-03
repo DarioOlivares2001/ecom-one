@@ -1,5 +1,5 @@
 import type { CartItem } from "@/lib/cart/store";
-import type { Product } from "@/lib/supabase/types";
+import type { Product } from "@/lib/db/types";
 import { toPixelContentId } from "@/lib/pixel/contentId";
 import { sumProductsValue, type PixelLineItem } from "@/lib/pixel/productsValue";
 

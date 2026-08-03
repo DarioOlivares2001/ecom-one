@@ -25,14 +25,6 @@ const r2Pattern = r2RemotePattern();
 const nextConfig = {
   images: {
     remotePatterns: [
-      // Legacy: imágenes ya subidas a Supabase Storage antes de migrar a R2.
-      // Se retira cuando ya no queden productos con URLs *.supabase.co.
-      {
-        protocol: 'https',
-        hostname: '*.supabase.co',
-        port: '',
-        pathname: '/storage/v1/object/public/**',
-      },
       ...(r2Pattern ? [r2Pattern] : []),
       {
         protocol: 'https',

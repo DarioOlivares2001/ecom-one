@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { updateOrder } from "@/lib/db/repositories/orders";
 import { confirmPaidOrderAndDecrementStock } from "@/lib/orders/confirmPaidAndDecrementStock";
+import { getAdminSessionFromCookies } from "@/lib/admin/session";
 
 const VALID = ["pending", "paid", "preparing", "shipped", "delivered", "cancelled"] as const;
 type OrderStatus = (typeof VALID)[number];
@@ -11,6 +12,10 @@ export async function updateOrderStatusAction(
   id: string,
   status: string
 ): Promise<{ error?: string }> {
+  if (!getAdminSessionFromCookies()) {
+    return { error: "No autorizado." };
+  }
+
   const normalizedStatus = status === "ready_to_ship" ? "shipped" : status;
   if (!VALID.includes(normalizedStatus as OrderStatus)) return { error: "Estado inválido." };
 

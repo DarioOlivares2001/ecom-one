@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { isR2Configured, uploadToR2 } from "@/lib/storage/r2";
+import { getAdminSessionFromCookies } from "@/lib/admin/session";
 import {
   createProduct,
   deleteProductHard,
@@ -23,6 +24,10 @@ import { parseProductSectionsFromFormData } from "@/lib/product/sections/parseFr
 export async function createProductAction(
   formData: FormData
 ): Promise<{ error?: string; success?: boolean }> {
+  if (!getAdminSessionFromCookies()) {
+    return { error: "No autorizado." };
+  }
+
   const hasVariants = formData.get("has_variants") === "true";
 
   // ── Upload multiple images in order ───────────────────────
@@ -230,6 +235,10 @@ export async function updateProductAction(
   id: string,
   formData: FormData
 ): Promise<{ error?: string; success?: boolean }> {
+  if (!getAdminSessionFromCookies()) {
+    return { error: "No autorizado." };
+  }
+
   const hasVariants = formData.get("has_variants") === "true";
 
   // ── Process ordered image slots ───────────────────────────
@@ -452,6 +461,9 @@ export async function updateProductAction(
 }
 
 export async function archiveProductAction(id: string): Promise<{ error?: string }> {
+  if (!getAdminSessionFromCookies()) {
+    return { error: "No autorizado." };
+  }
   try {
     await softDeleteProduct(id);
   } catch (error) {
@@ -462,6 +474,9 @@ export async function archiveProductAction(id: string): Promise<{ error?: string
 }
 
 export async function restoreProductAction(id: string): Promise<{ error?: string }> {
+  if (!getAdminSessionFromCookies()) {
+    return { error: "No autorizado." };
+  }
   try {
     await restoreProduct(id);
   } catch (error) {

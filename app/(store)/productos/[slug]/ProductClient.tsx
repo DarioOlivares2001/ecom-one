@@ -23,7 +23,7 @@ import { toast } from "@/components/ui/Toast";
 import { StickyAddToCart } from "@/components/store/StickyAddToCart";
 import { TrustBadges } from "@/components/store/TrustBadges";
 import { normalizeProductCategory } from "@/lib/product/categories";
-import type { Database, Product, Review } from "@/lib/supabase/types";
+import type { Product, ProductVariant, Review } from "@/lib/db/types";
 import type { ProductUpsellSuggestion } from "@/lib/product/upsell";
 import {
   ProductSectionsRenderer,
@@ -33,11 +33,9 @@ import {
 interface Props {
   product: Product;
   reviews: Review[];
-  variants: Database["public"]["Tables"]["product_variants"]["Row"][];
+  variants: ProductVariant[];
   upsellSuggestions?: ProductUpsellSuggestion[];
 }
-
-type ProductVariant = Database["public"]["Tables"]["product_variants"]["Row"];
 
 // ─── Gallery ─────────────────────────────────────────────────────────────────
 

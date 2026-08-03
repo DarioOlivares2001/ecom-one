@@ -8,7 +8,7 @@ import { clsx } from "clsx";
 import { ProductCard } from "@/components/store/ProductCard";
 import { ProductCardSkeleton } from "@/components/ui/Skeleton";
 import { Button } from "@/components/ui/Button";
-import type { Product } from "@/lib/supabase/types";
+import type { Product } from "@/lib/db/types";
 import { normalizeProductCategory, sortCategoriesForStore } from "@/lib/product/categories";
 
 // ─── Types ────────────────────────────────────────────────────────────────────

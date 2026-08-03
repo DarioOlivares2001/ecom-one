@@ -1,4 +1,4 @@
-import type { Json, Product } from "@/lib/supabase/types";
+import type { Json, Product } from "@/lib/db/types";
 import { normalizeOptimizedImageUrl } from "@/lib/images/normalizeOptimizedImageUrl";
 
 const CONTEXTS = [

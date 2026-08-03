@@ -1,5 +1,5 @@
 import { normalizeOptimizedImageUrl } from "@/lib/images/normalizeOptimizedImageUrl";
-import type { Json } from "@/lib/supabase/types";
+import type { Json } from "@/lib/db/types";
 
 /** Margen mínimo de seguridad: si la oferta deja menos de esto, se anula el descuento. */
 const MIN_MARGIN_PCT = 0.25;

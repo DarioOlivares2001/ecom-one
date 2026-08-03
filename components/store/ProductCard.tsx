@@ -11,7 +11,7 @@ import { formatPrice } from "@/lib/utils/format";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { toast } from "@/components/ui/Toast";
-import type { Product } from "@/lib/supabase/types";
+import type { Product } from "@/lib/db/types";
 import { productRequiresVariantChoice } from "@/lib/product/catalogVariants";
 
 interface ProductCardProps {

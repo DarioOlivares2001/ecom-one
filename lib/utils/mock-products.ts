@@ -1,4 +1,4 @@
-import type { Product } from "@/lib/supabase/types";
+import type { Product } from "@/lib/db/types";
 
 export const MOCK_PRODUCTS: Product[] = [
   {

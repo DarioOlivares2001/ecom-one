@@ -1,4 +1,4 @@
-import type { Json } from "@/lib/supabase/types";
+import type { Json } from "@/lib/db/types";
 
 /** Escalón persistido en `products.discount_steps` (JSON). */
 export type AdminDiscountStep = { minQty: number; percent: number };

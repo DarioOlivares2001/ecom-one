@@ -1,5 +1,5 @@
 import { clsx } from "clsx";
-import type { Json } from "@/lib/supabase/types";
+import type { Json } from "@/lib/db/types";
 import { formatPrice } from "@/lib/utils/format";
 import {
   getDiscountedUnitPrice,

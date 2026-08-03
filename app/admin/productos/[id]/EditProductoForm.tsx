@@ -13,7 +13,7 @@ import { toast } from "@/components/ui/Toast";
 import { updateProductAction } from "../nuevo/actions";
 import { compressImageIfNeeded } from "@/lib/images/compressImage";
 import { ECOMMERCE_CATEGORIES, normalizeProductCategory } from "@/lib/product/categories";
-import type { Json } from "@/lib/supabase/types";
+import type { Json } from "@/lib/db/types";
 import { normalizeDiscountSteps } from "@/lib/discounts";
 import {
   ADMIN_DEFAULT_LABEL,

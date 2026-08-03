@@ -26,10 +26,11 @@ export default async function EditProductoPage({
   return (
     // `variants`/`options`/`option_values` son JSON dinámico (Json en el schema);
     // EditProductoForm ya los trata como tal internamente con casts puntuales.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    /* eslint-disable @typescript-eslint/no-explicit-any */
     <EditProductoForm
       product={result.product as any}
       productVariants={result.productVariants as any}
     />
+    /* eslint-enable @typescript-eslint/no-explicit-any */
   );
 }

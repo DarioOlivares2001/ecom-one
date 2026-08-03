@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { compressIconImage } from "@/lib/images/compressIconImage";
 import { isAllowedImageMimeType, isR2Configured, MAX_UPLOAD_BYTES, uploadToR2 } from "@/lib/storage/r2";
+import { getAdminSessionFromCookies } from "@/lib/admin/session";
 
 export const runtime = "nodejs";
 
@@ -15,6 +16,11 @@ const SIZES = [
 
 export async function POST(req: Request) {
   try {
+    const session = getAdminSessionFromCookies();
+    if (!session) {
+      return NextResponse.json({ error: "No autorizado." }, { status: 401 });
+    }
+
     if (!isR2Configured()) {
       return NextResponse.json(
         { error: "Cloudflare R2 no está configurado todavía. Ver R2_SETUP.md." },

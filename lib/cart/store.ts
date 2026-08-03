@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { Json } from "@/lib/supabase/types";
+import type { Json } from "@/lib/db/types";
 import {
   getDiscountedUnitPrice,
   type ProductDiscountInput,

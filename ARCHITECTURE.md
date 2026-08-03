@@ -1,6 +1,11 @@
 # TheGate - Arquitectura del proyecto
 
-Tienda de ecommerce chilena construida con Next.js 14 App Router, Supabase y Flow Chile como pasarela de pagos.
+Tienda de ecommerce chilena construida con Next.js 14 App Router, Neon (PostgreSQL serverless) +
+Drizzle ORM, Cloudflare R2 para storage de imágenes, y Flow Chile como pasarela de pagos.
+
+> Migrada desde Supabase (PostgreSQL + RLS + Storage) a Neon/Drizzle/R2 con sesiones propias
+> (bcrypt + cookie HMAC-SHA256). Ver `MIGRATION_STATUS.md` para el detalle completo de la migración,
+> decisiones de diseño y verificaciones realizadas fase por fase.
 
 ---
 
@@ -9,7 +14,9 @@ Tienda de ecommerce chilena construida con Next.js 14 App Router, Supabase y Flo
 | Capa | Tecnología |
 |---|---|
 | Framework | Next.js 14 (App Router) |
-| Base de datos | Supabase (PostgreSQL + RLS + Storage) |
+| Base de datos | Neon (PostgreSQL serverless) + Drizzle ORM (`drizzle-orm/neon-http`) |
+| Storage de imágenes | Cloudflare R2 (API compatible con S3, `@aws-sdk/client-s3`) |
+| Autenticación | Sesiones propias: `bcryptjs` (hash) + cookie firmada HMAC-SHA256 (sin proveedor externo) |
 | Estilos | Tailwind CSS v3 |
 | Animaciones | Framer Motion |
 | Estado del carrito | Zustand (con persist en localStorage) |
@@ -29,10 +36,8 @@ Tienda de ecommerce chilena construida con Next.js 14 App Router, Supabase y Flo
 Archivo de referencia: `.env.example`
 
 ```
-# Supabase
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
+# Base de datos (Neon, Postgres serverless)
+DATABASE_URL=
 
 # Flow Chile
 FLOW_API_KEY=
@@ -51,8 +56,19 @@ NEXT_PUBLIC_SITE_NAME=TheGate
 # Email
 RESEND_API_KEY=
 
-# Admin
-ADMIN_EMAIL=
+# Sesiones propias (bcrypt + cookie HMAC-SHA256). Obligatorias, sin fallback.
+ADMIN_SESSION_SECRET=
+CUENTA_SESSION_SECRET=
+
+# Cron (protege /api/cron/cancel-stale-orders)
+CRON_SECRET=
+
+# Cloudflare R2 (storage de imágenes, API compatible con S3)
+R2_ACCOUNT_ID=
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+R2_BUCKET_NAME=
+R2_PUBLIC_URL=
 ```
 
 El modo mock de Flow se activa si `FLOW_MOCK=true` o si `FLOW_API_KEY` contiene la cadena "sandbox".
@@ -122,112 +138,85 @@ app/
     ├── checkout/
     │   ├── recommendations/route.ts   # GET - recomendaciones en checkout
     │   └── whatsapp-config/route.ts   # GET - flag pedido por WhatsApp + teléfono
-    └── upload/
-        └── hero/route.ts              # POST multipart - comprime y sube banner hero a Storage (bucket store-assets)
+    └── upload/                        # POST multipart, requieren sesión admin - comprimen y suben a Cloudflare R2
+        ├── logo/route.ts              # logo horizontal/cuadrado (prefijo logos/)
+        ├── favicon/route.ts           # favicon 32px + apple-touch-icon 180px + ícono PWA 512px (prefijo favicons/)
+        └── hero/route.ts              # banner hero desktop/mobile (prefijo hero-banners/)
 ```
 
 ---
 
-## Clientes de Supabase
+## Acceso a datos (Neon + Drizzle)
 
-`lib/supabase/` expone tres clientes:
+`lib/db/`:
 
-| Archivo | Función | Cuándo usar |
-|---|---|---|
-| `client.ts` | `createClient()` - anon key | Componentes cliente de la tienda |
-| `server.ts` | `createServerClient()` - anon key + cookies | Server components de la tienda |
-| `admin.ts` | `createAdminClient()` - service_role key | Rutas `/admin/*`, APIs que mutan datos sensibles, webhook de Flow, **`getStoreSettings()`** (lectura de `store_settings` en servidor) |
+| Archivo/carpeta | Función |
+|---|---|
+| `lib/db/client.ts` (o equivalente) | Cliente `drizzle-orm/neon-http` sobre `@neondatabase/serverless`, usando `DATABASE_URL`. HTTP *stateless*: no soporta `db.transaction` interactivo multi-round-trip. |
+| `lib/db/schema/*` | Esquema Drizzle modularizado por dominio (`products`, `productVariants`, `orders`, `reviews`, `clientes`, `clienteDirecciones`, `adminUsers`, `storeSettings`), con barrel `index.ts`. |
+| `lib/db/types.ts` | Interfaces de fila en **snake_case** (mismo shape que tenía `lib/supabase/types.ts` en la era Supabase), para que el resto del código no tuviera que cambiar cómo lee los campos al migrar. |
+| `lib/db/repositories/*` | Funciones tipadas de lectura/escritura por dominio (get/list/create/update); cada una mapea el resultado camelCase de Drizzle al shape snake_case de `types.ts`. Es la única forma en que el resto de la app toca la base de datos — no hay queries SQL sueltas fuera de esta capa (salvo la función nativa de abajo). |
+| `lib/db/transactions/confirmPaidOrder.ts` | Wrapper sobre la función PL/pgSQL nativa `confirm_paid_order_and_decrement_stock`. |
 
-El cliente admin bypasea Row Level Security. Se usa en todas las rutas de `/admin/*` y en `/api/flow/*`, upload de hero, etc.
+No se usa un ORM/cliente admin con bypass de RLS (Neon no tiene RLS configurado): toda ruta que muta datos sensibles debe verificar autenticación explícitamente con `getAdminSessionFromCookies()` (admin) o `getSessionFromCookies()`/equivalente (cuenta de cliente) — ver **Autenticación y sesiones** más abajo.
 
 ---
 
 ## Base de datos
 
-Las migraciones viven en `supabase/migrations/`. El orden numérico importa al aplicarlas en un proyecto nuevo. El detalle por archivo está en **Catálogo de migraciones** más abajo.
+El esquema vive en `lib/db/schema/*` (Drizzle) y las migraciones aplicadas en `drizzle/*.sql`. El esquema de origen (Supabase) queda documentado como referencia histórica en `supabase/migrations/` — ya no se aplica ni se usa en runtime.
 
 ### `products`
 
-| Columna | Tipo | Notas |
-|---|---|---|
-| `id` | UUID PK | `gen_random_uuid()` |
-| `slug` | TEXT UNIQUE | URL del producto |
-| `name` | TEXT | |
-| `description` | TEXT | HTML generado por CodeMirror |
-| `price` | INTEGER | Precio en CLP |
-| `compare_at_price` | INTEGER | Precio tachado opcional |
-| `stock` | INTEGER | |
-| `images` | TEXT[] | URLs de Supabase Storage bucket "products" |
-| `category` | TEXT | |
-| `tags` | TEXT[] | |
-| `variants` | JSONB | Opciones del producto (color, talla, etc.) |
-| `meta_title` | TEXT | SEO |
-| `meta_desc` | TEXT | SEO |
-| `active` | BOOLEAN | RLS: solo productos activos son visibles anónimamente |
+Columnas relevantes: `id` (UUID PK), `slug` (UNIQUE), `name`, `description` (HTML de CodeMirror), `price`/`compare_at_price`/`cost_price` (CLP, enteros), `stock`, `images` (TEXT[], URLs de Cloudflare R2), `category`, `tags`, `variants`/`options` (JSONB, para productos con variantes), `has_variants`, `discount_enabled`/`discount_max_percent`/`discount_steps`/`discount_label` (descuento por volumen), `product_sections` (JSONB, bloques modulares de la página de producto), `meta_title`/`meta_desc` (SEO), `active`, `deleted_at` (soft delete).
 
-RLS: lectura pública (`active = true`), escritura solo `service_role`.
+### `product_variants`
+
+FK a `products` (CASCADE). Columnas: `title`, `option_values` (JSONB), `price`/`compare_at_price`/`cost_price`, `stock`, `image_url`, `badge_text`, `active`, `position`.
 
 ### `orders`
 
-| Columna | Tipo | Notas |
-|---|---|---|
-| `id` | UUID PK | |
-| `order_number` | SERIAL UNIQUE | Número legible (#1, #2...) |
-| `status` | TEXT CHECK | `pending`, `paid`, `preparing`, `shipped`, `delivered`, `cancelled` |
-| `customer_name` | TEXT | |
-| `customer_email` | TEXT | |
-| `customer_phone` | TEXT | |
-| `shipping_address` | JSONB | `{direccion, ciudad, region}` |
-| `items` | JSONB | Array de `{name, price, quantity, image, variant}` |
-| `subtotal` | INTEGER | CLP |
-| `shipping_cost` | INTEGER | CLP |
-| `total` | INTEGER | CLP |
-| `flow_token` | TEXT | Token de sesión Flow |
-| `flow_order` | TEXT | ID de orden en Flow |
-| `notes` | TEXT | |
-
-RLS: inserción anónima permitida, lectura/actualización solo `service_role`.
-
-El estado `preparing` en el `CHECK` de `orders.status` lo añade la migración `002` (ver catálogo).
+`id` (UUID PK), `order_number` (secuencial legible), `display_code` (código público tipo `SO00000001`), `status` (CHECK: `awaiting_payment`, `pending`, `paid`, `preparing`, `shipped`, `delivered`, `cancelled`), datos de cliente, `shipping_address`/`items` (JSONB), `subtotal`/`shipping_cost`/`total`, `flow_token`/`flow_order`, `stock_discounted` (idempotencia), `client_ip_address`/`client_user_agent` (para Meta CAPI).
 
 ### `reviews`
 
-Tabla creada en `001` con: `id`, `product_id`, `order_id`, `author_name`, `rating`, `comment`, `verified`, `active`, `created_at`. La migración `005` añade moderación y contacto/media: `status` (`pending` \| `approved` \| `rejected`), `author_email`, `photo_url`, `updated_at`, y hace backfill de `status` desde `active`.
+FK a `products` (CASCADE) y `orders`. `status` (`pending`/`approved`/`rejected`), `author_name`/`author_email`, `rating`, `comment`, `photo_url`, `active`.
 
-Vinculada a `products` (CASCADE) y `orders`. Lectura pública de filas aprobadas según políticas; inserción pública; actualización/borrado vía `service_role` y panel `/admin/resenas`.
+### `clientes` + `cliente_direcciones`
 
-### `customers`
+Cuentas de cliente con login propio: `password_hash` (bcrypt), `rut_numero`/`rut_dv`, `reset_token` (recuperación de contraseña, un solo uso). `cliente_direcciones` tiene FK CASCADE a `clientes` y un índice único parcial para la dirección default.
 
-Solo `service_role`. Agrega totales de pedidos y direcciones guardadas.
+### `admin_users`
+
+Usuarios del panel admin: `email`, `password_hash`, `role` (`owner`/`admin`/`operator`), `active`, `last_login_at`.
 
 ### `store_settings`
 
-Fila única (o la más reciente) consumida por `getStoreSettings()`. La app y `lib/supabase/types.ts` esperan también **`hero_overlay_opacity`** (entero, modo manual del hero); **no hay migración en este repo que cree esa columna** — si en tu instancia no existe, añádela con el SQL dashboard o una migración nueva (`INTEGER` / `SMALLINT`, coherente con el admin).
+Fila única (índice singleton `uq_store_settings_singleton`). Incluye identidad de marca, tema/colores, tipografía, banners hero, contacto, `enable_whatsapp_checkout`, Meta Pixel/CAPI (incluido el secreto `meta_capi_access_token`), Microsoft Clarity, envío y numeración de pedidos.
 
-RLS: política `store_settings_service_all` (solo `service_role`). La tienda lee en servidor con admin client.
+Banners hero, logos, favicons e imágenes de producto: suben vía `/api/upload/{hero,logo,favicon}` o `app/admin/productos/nuevo/actions.ts` → `lib/storage/r2.ts` (Cloudflare R2). Estas rutas y acciones requieren sesión de admin (`getAdminSessionFromCookies()`).
 
-Banners hero: subida desde admin → `POST /api/upload/hero` → bucket **`store-assets`** (prefijo `hero-banners/`), compresión en `lib/images/compressHeroImage.ts`.
+### Función nativa: `confirm_paid_order_and_decrement_stock`
 
-### Catálogo de migraciones SQL
+Única función PL/pgSQL del proyecto (portada tal cual desde Supabase). Recorre `orders.items`, descuenta stock de `products`/`product_variants` con `SELECT ... FOR UPDATE` (lock pesimista), es idempotente vía `stock_discounted`, y transiciona `status → paid`. Se invoca vía `db.execute(sql\`select * from confirm_paid_order_and_decrement_stock(${orderId})\`)` — necesario porque el driver HTTP de Neon no soporta transacciones interactivas multi-round-trip, así que la atomicidad se preserva dentro de la función nativa, no en JS.
 
-| Archivo | Tabla / recurso | Qué hace |
+---
+
+## Autenticación y sesiones
+
+Dos sistemas de sesión independientes, ambos cookie HMAC-SHA256 (`httpOnly`, `secure` en producción, `sameSite: lax`), sin proveedor externo:
+
+| | Admin (`lib/admin/session.ts`) | Cuenta de cliente (`lib/cuenta/session.ts`) |
 |---|---|---|
-| **`001_initial_schema.sql`** | `products` | PK, slug, precios, stock, `images[]`, categoría, tags, variants JSONB, meta SEO, `active`, timestamps; índices; RLS (lectura pública si `active`, mutación `service_role`). |
-| | `orders` | PK, `order_number` SERIAL, `status` con CHECK inicial (`pending`, `paid`, `shipped`, `delivered`, `cancelled`), cliente, `shipping_address` JSONB, `items` JSONB, totales, `flow_token`, `flow_order`, `notes`, timestamps; índices; RLS (insert/update anónimo acotado + `service_role`). |
-| | `reviews` | PK, `product_id` FK CASCADE, `order_id` FK, autor, rating 1–5, `comment`, `verified`, `active`, `created_at`; RLS. |
-| | `customers` | PK, `email` UNIQUE, nombre, teléfono, `addresses` JSONB[], `total_orders`, `total_spent`, `created_at`; RLS solo `service_role`. |
-| | Función | `set_updated_at()` + triggers `BEFORE UPDATE` en `products` y `orders`. |
-| **`002_update_orders_status_check.sql`** | `orders` | Sustituye el CHECK de `status` por: `pending`, `paid`, **`preparing`**, `shipped`, `delivered`, `cancelled`. |
-| **`003_store_settings_extended.sql`** | `store_settings` | `CREATE TABLE IF NOT EXISTS` con: `id`, `store_name`, `store_tagline`, `logo_url`, `logo_square_url`, `primary_color`, `accent_color`, `background_color`, `surface_color`, `text_color`, `text_muted_color`, `border_color`, `support_whatsapp`, `support_instagram`, `support_tiktok`, `support_email`, **`font_display`**, **`font_body`**, `free_shipping_from`, `shipping_cost`, `estimated_days`, `created_at`, `updated_at`. Trigger `trg_store_settings_updated_at`; RLS + política `store_settings_service_all`. Bloque idempotente: asegura columnas `support_email`, `font_display`, `font_body`, `free_shipping_from`, `shipping_cost`, `estimated_days` si faltaban. |
-| **`004_enable_whatsapp_checkout.sql`** | `store_settings` | Columna **`enable_whatsapp_checkout`** `BOOLEAN NOT NULL DEFAULT false`. |
-| **`005_reviews_moderation_and_media.sql`** | `reviews` | Columnas **`status`** (`pending` \| `approved` \| `rejected`), **`author_email`**, **`photo_url`**, **`updated_at`**; `UPDATE` de backfill `status` desde `active`. |
-| **`006_store_settings_contact_email.sql`** | `store_settings` | Columna **`contact_email`** `TEXT`. |
-| **`007_store_settings_hero_banners.sql`** | `store_settings` | Columnas **`hero_banner_desktop_url`**, **`hero_banner_mobile_url`** `TEXT`. |
-| **`008_store_assets_bucket.sql`** | `storage.buckets` | Inserta bucket **`store-assets`** (público). Política **`store_assets_public_read`** en `storage.objects` para `SELECT` cuando `bucket_id = 'store-assets'`. |
-| **`009_store_settings_admin_config_columns.sql`** | `store_settings` | Añade de forma idempotente todas las columnas que usa el admin de configuración si no existen: `store_name`, `store_tagline`, `logo_url`, `logo_square_url`, `favicon_url`, `brand_text_color`, `navbar_background_color`, `navbar_text_color`, `footer_background_color`, `footer_text_color`, `theme_preset`, `branding_mode`, `logo_size_desktop`, `logo_size_mobile`, `brand_text_scale`, `navbar_brand_position`, `navbar_menu_position`, **`font_heading`**, **`font_body`**, `theme_manual_override`, `primary_color`, `accent_color`, `background_color`, `surface_color`, `text_color`, `text_muted_color`, `border_color`, `support_whatsapp`, `contact_email`, `support_instagram`, `support_tiktok`, `enable_whatsapp_checkout`, `hero_banner_desktop_url`, `hero_banner_mobile_url`. |
-| **`010_store_settings_hero_overlay_mode.sql`** | `store_settings` | Columna **`hero_overlay_mode`** `TEXT NOT NULL DEFAULT 'manual'` (la app usa valores `manual` / `auto`). |
+| Secreto | `ADMIN_SESSION_SECRET` (obligatorio, sin fallback) | `CUENTA_SESSION_SECRET` (obligatorio, sin fallback) |
+| Duración | 12 h | 30 días |
+| Hash de contraseña | `bcryptjs` (cost 12) | `bcryptjs` (cost 12) |
+| Verificación de firma | `crypto.timingSafeEqual` | `crypto.timingSafeEqual` |
+| Protección de rutas | `app/admin/layout.tsx` redirige a `/admin/login` si no hay sesión | páginas `/cuenta/*` + API routes `/api/cuenta/*` verifican sesión explícitamente |
 
-**Nota sobre fuentes en BD:** coexisten `font_display` (003) y `font_heading` (009). La vista TypeScript y `getStoreSettings()` usan **`font_heading`** y **`font_body`** al leer la fila.
+**Importante para rutas/Server Actions fuera de `app/admin/**` páginas** (API routes en `/api/upload/*`, Server Actions en archivos `actions.ts` o inline `"use server"`): el layout de admin solo protege la *carga de la página*, no protege automáticamente rutas API standalone ni el endpoint interno que invoca una Server Action. Cada una de estas debe llamar explícitamente a `getAdminSessionFromCookies()` y devolver `401`/`{ error: "No autorizado." }` si no hay sesión — patrón ya aplicado en todas las existentes (ver Fase 9 en `MIGRATION_STATUS.md`).
+
+Recuperación de contraseña (ambos: admin vía `/api/admin/users/reset-password`, cliente vía `/api/cuenta/recuperar`+`/api/cuenta/reset`): token de un solo uso con expiración (1 h para cliente). `POST /api/cuenta/recuperar` siempre responde `{ok:true}` exista o no la cuenta, para no filtrar qué emails están registrados.
 
 ---
 
@@ -236,22 +225,15 @@ Banners hero: subida desde admin → `POST /api/upload/hero` → bucket **`store
 ### Modo mock (FLOW_MOCK=true)
 
 1. El checkout llama `POST /api/flow/create` con los datos del carrito.
-2. La ruta crea directamente un registro en `orders` con `status = 'paid'` usando el admin client.
+2. La ruta crea directamente una orden con `status = 'paid'`.
 3. Devuelve `{ redirectUrl: /checkout/confirmacion?order=N&token=MOCK-N&mock=1 }`.
 4. La página de confirmación muestra el número de orden real.
 
 ### Modo real
 
-1. `POST /api/flow/create`:
-   - Inserta orden en Supabase con `status = 'pending'`.
-   - Firma los parámetros con HMAC-SHA256.
-   - Llama a `flow.cl/api/payment/create`.
-   - Actualiza la orden con el `flow_token` recibido.
-   - Devuelve la URL de redirección a Flow.
+1. `POST /api/flow/create`: crea la orden con `status = 'awaiting_payment'`, firma los parámetros con HMAC-SHA256, llama a `flow.cl/api/payment/create`, guarda el `flow_token` recibido y devuelve la URL de redirección a Flow.
 2. El usuario paga en la plataforma de Flow.
-3. Flow llama a `POST /api/flow/webhook`:
-   - Verifica la firma.
-   - Si `flowStatus == 2` (pagado), actualiza `orders.status = 'paid'` con admin client.
+3. Flow llama a `POST /api/flow/webhook` con un `token`. La ruta **no confía en el body del webhook** — vuelve a consultar `payment/getStatus` directamente a Flow (firmado con el mismo HMAC) para obtener el estado real, y solo entonces, si `status === 2` (pagado), invoca `confirm_paid_order_and_decrement_stock` (idempotente).
 4. Flow redirige al usuario a `/checkout/confirmacion`.
 
 ### Firma HMAC
@@ -286,7 +268,7 @@ Flujo de estados: `pending -> paid -> preparing -> shipped -> delivered` (o `can
 ### Productos (`/admin/productos`)
 
 - Lista de todos los productos (incluyendo inactivos) con precio, stock, estado.
-- Crear nuevo: formulario con nombre, precio, stock, categoría, descripción (CodeMirror HTML), imágenes (upload a Supabase Storage).
+- Crear nuevo: formulario con nombre, precio, stock, categoría, descripción (CodeMirror HTML), imágenes (upload a Cloudflare R2).
 - Editar existente: misma UI pre-poblada. Las imágenes existentes se mantienen como slots "existing"; se pueden reemplazar con archivos nuevos.
 - El formulario envía `slot_count` + `slot_N_type` ("existing" o "new") + `slot_N_url` o `slot_N_file`.
 
@@ -380,7 +362,7 @@ Utilidades relacionadas: `lib/cart/whatsappCartOrder.ts` (mensaje / enlace para 
 | Módulo | Descripción |
 |---|---|
 | `lib/utils/format.ts` | `formatPrice()` - Intl.NumberFormat para CLP |
-| `lib/utils/mock-products.ts` | Datos de ejemplo para desarrollo sin Supabase |
+| `lib/utils/mock-products.ts` | Datos de ejemplo para desarrollo/fallback si falla la DB |
 | `lib/store-settings/getStoreSettings.ts` | Lee y normaliza `store_settings` → `StoreSettingsView` (defaults si falla la DB) |
 | `lib/pixel/events.ts` | Helpers para disparar eventos de Meta Pixel |
 | `lib/images/compressImage.ts` | Compresión de imágenes de producto (cliente) |
@@ -389,6 +371,9 @@ Utilidades relacionadas: `lib/cart/whatsappCartOrder.ts` (mensaje / enlace para 
 | `lib/checkout/recommendations.ts` | Lógica de recomendaciones en checkout |
 | `lib/product/upsell.ts` | Reglas / fetch de upsells |
 | `lib/email/*` | Resend, plantillas de pedido, reseña pendiente, etc. |
+| `lib/storage/r2.ts` | Cliente Cloudflare R2 (`uploadToR2`, `deleteFromR2`, `isR2Configured`), validación de MIME/tamaño |
+| `lib/admin/session.ts` / `lib/cuenta/session.ts` | Sesiones propias (cookie HMAC-SHA256), hash bcrypt, `getAdminSessionFromCookies()`/equivalente de cuenta |
+| `lib/db/repositories/*` | Capa de acceso a datos (Drizzle + Neon), ver **Acceso a datos** arriba |
 
 Scripts npm útiles: `audit:product-images`, `optimize:product-images`, `fix:product-image-urls`, etc. (ver `package.json`).
 
@@ -399,7 +384,8 @@ Scripts npm útiles: `audit:product-images`, `optimize:product-images`, `fix:pro
 - **Server components** para todo lo que puede ser estático (fetch + render).
 - **"use client"** solo donde hay interactividad real (estado, eventos, APIs de browser).
 - **Server actions** (`"use server"`) para mutaciones: crear/actualizar productos y órdenes.
-- `createAdminClient()` (service_role) en rutas admin y API sensibles; nunca en componentes cliente con la service key.
+- Toda ruta API o Server Action que muta datos de admin (`/api/upload/*`, `actions.ts`, `"use server"` inline en páginas de `/admin/**`) empieza verificando `getAdminSessionFromCookies()` y devuelve `401`/`{ error: "No autorizado." }` si no hay sesión — el layout de `/admin` solo protege la carga de la página, no estos endpoints (ver **Autenticación y sesiones**).
+- Acceso a datos siempre vía `lib/db/repositories/*` (Drizzle); no hay queries SQL sueltas fuera de esa capa.
 - Los precios se almacenan como enteros en CLP. `formatPrice()` en `lib/utils/format.ts`.
 - `normalizeStatus("ready_to_ship")` devuelve `"shipped"` en todos los lugares donde se lee el estado (compatibilidad con nomenclatura antigua de Flow).
 - `revalidatePath()` en cada server action que muta datos, apuntando a las rutas afectadas.

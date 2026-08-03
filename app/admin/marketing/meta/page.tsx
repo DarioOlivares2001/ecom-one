@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { revalidatePath } from "next/cache";
 import { getStoreSettingsRow, upsertStoreSettings } from "@/lib/db/repositories/storeSettings";
 import { getStoreSettings } from "@/lib/store-settings/getStoreSettings";
+import { getAdminSessionFromCookies } from "@/lib/admin/session";
 import { MetaMarketingForm } from "./MetaMarketingForm";
 
 export const metadata: Metadata = { title: "Meta — Marketing" };
@@ -15,6 +16,10 @@ export type SaveMetaResult = { error?: string; success?: boolean };
  */
 async function saveMetaSettingsAction(formData: FormData): Promise<SaveMetaResult> {
   "use server";
+
+  if (!getAdminSessionFromCookies()) {
+    return { error: "No autorizado." };
+  }
 
   function read(field: string) {
     return String(formData.get(field) ?? "").trim();

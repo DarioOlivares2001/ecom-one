@@ -14,6 +14,7 @@ import { LogoUploadField } from "./LogoUploadField";
 import { ConfigTabs } from "./ConfigTabs";
 import { SaveSettingsForm } from "./SaveSettingsForm";
 import { fontNamesForRole } from "@/lib/fonts/registry";
+import { getAdminSessionFromCookies } from "@/lib/admin/session";
 
 export const metadata: Metadata = { title: "Configuración" };
 
@@ -23,6 +24,10 @@ const BODY_FONTS = fontNamesForRole("body");
 
 async function saveSettingsAction(formData: FormData): Promise<{ error?: string; success?: boolean }> {
   "use server";
+
+  if (!getAdminSessionFromCookies()) {
+    return { error: "No autorizado." };
+  }
 
   function read(field: keyof StoreSettingsView) {
     return String(formData.get(field) ?? "").trim();

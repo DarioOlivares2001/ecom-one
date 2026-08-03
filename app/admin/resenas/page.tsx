@@ -8,6 +8,7 @@ import {
   updateReviewStatus,
 } from "@/lib/db/repositories";
 import { formatPrice } from "@/lib/utils/format";
+import { getAdminSessionFromCookies } from "@/lib/admin/session";
 import { ReviewActions } from "./ReviewActions";
 
 export const metadata: Metadata = { title: "Reseñas" };
@@ -18,6 +19,9 @@ type ReviewStatusTab = "pending" | "approved" | "rejected";
 
 async function approveReviewAction(id: string): Promise<{ error?: string }> {
   "use server";
+  if (!getAdminSessionFromCookies()) {
+    return { error: "No autorizado." };
+  }
   const trimmedId = id.trim();
   if (!trimmedId) return { error: "ID de reseña inválido." };
 
@@ -35,6 +39,9 @@ async function approveReviewAction(id: string): Promise<{ error?: string }> {
 
 async function rejectReviewAction(id: string): Promise<{ error?: string }> {
   "use server";
+  if (!getAdminSessionFromCookies()) {
+    return { error: "No autorizado." };
+  }
   const trimmedId = id.trim();
   if (!trimmedId) return { error: "ID de reseña inválido." };
 
@@ -51,6 +58,9 @@ async function rejectReviewAction(id: string): Promise<{ error?: string }> {
 
 async function hideApprovedReviewAction(id: string): Promise<{ error?: string }> {
   "use server";
+  if (!getAdminSessionFromCookies()) {
+    return { error: "No autorizado." };
+  }
   const trimmedId = id.trim();
   if (!trimmedId) return { error: "ID de reseña inválido." };
 
