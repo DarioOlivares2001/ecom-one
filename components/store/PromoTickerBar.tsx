@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 
 const PROMO_BULLETS = [
-  "Productos seleccionados para gatos y hogares más limpios",
-  "Entrega rápida en Rancagua y alrededores",
+  "Productos seleccionados con criterio",
+  "Entrega rápida a todo el país",
   "Beneficios exclusivos al agregar productos al carrito",
   "Compra segura y atención directa por WhatsApp",
 ] as const;

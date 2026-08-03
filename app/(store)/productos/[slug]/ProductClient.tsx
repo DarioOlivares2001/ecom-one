@@ -25,6 +25,7 @@ import { TrustBadges } from "@/components/store/TrustBadges";
 import { normalizeProductCategory } from "@/lib/product/categories";
 import type { Product, ProductVariant, Review } from "@/lib/db/types";
 import type { ProductUpsellSuggestion } from "@/lib/product/upsell";
+import { isAllowedImageSrc, sanitizeImageUrls } from "@/lib/images/isAllowedImageSrc";
 import {
   ProductSectionsRenderer,
   hasVisibleProductSections,
@@ -311,8 +312,9 @@ export function ProductClient({ product, reviews, variants, upsellSuggestions = 
   const displayCompareAt =
     selectedRealVariant?.compare_at_price ?? product.compare_at_price;
   const displayStock = selectedRealVariant?.stock ?? product.stock;
-  const displayImage =
+  const rawDisplayImage =
     selectedRealVariant?.image_url || product.images?.[0] || "";
+  const displayImage = isAllowedImageSrc(rawDisplayImage) ? rawDisplayImage : "";
 
   const hasOffer =
     !!displayCompareAt && displayCompareAt > displayPrice;
@@ -534,7 +536,7 @@ export function ProductClient({ product, reviews, variants, upsellSuggestions = 
       <div className="grid grid-cols-1 lg:grid-cols-2 lg:gap-16 lg:px-8">
 
         {/* Gallery — full bleed on mobile, half column on desktop */}
-        <Gallery images={product.images ?? []} name={product.name} />
+        <Gallery images={sanitizeImageUrls(product.images)} name={product.name} />
 
         {/* Info panel — padded on mobile, flush on desktop */}
         <div className="mt-6 flex flex-col gap-5 px-4 sm:px-6 lg:mt-0 lg:px-0">

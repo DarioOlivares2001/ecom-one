@@ -6,6 +6,7 @@ import {
   type CheckoutRecRow,
 } from "@/lib/checkout/recommendations";
 import { normalizeOptimizedImageUrl } from "@/lib/images/normalizeOptimizedImageUrl";
+import { isAllowedImageSrc } from "@/lib/images/isAllowedImageSrc";
 
 const bodySchema = z.object({
   excludeProductIds: z.array(z.string().min(1)).optional().default([]),
@@ -39,9 +40,9 @@ export async function POST(req: Request) {
 
     const normalizedProducts = products.map((p) => ({
       ...p,
-      images: (Array.isArray(p.images) ? p.images : []).map((img) =>
-        normalizeOptimizedImageUrl(String(img ?? ""))
-      ),
+      images: (Array.isArray(p.images) ? p.images : [])
+        .map((img) => normalizeOptimizedImageUrl(String(img ?? "")))
+        .filter(isAllowedImageSrc),
     }));
 
     return NextResponse.json({ title, products: normalizedProducts });

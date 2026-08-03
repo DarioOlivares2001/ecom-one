@@ -5,6 +5,7 @@ import {
   getDiscountedUnitPrice,
   type ProductDiscountInput,
 } from "@/lib/discounts";
+import { isAllowedImageSrc } from "@/lib/images/isAllowedImageSrc";
 
 export type CartLineMatch = {
   variant?: string;
@@ -85,20 +86,39 @@ function isSameItem(a: CartItem, b: CartItem) {
   return aUps === bUps;
 }
 
+/** IDs reales (products.id / product_variants.id) son siempre UUID (`gen_random_uuid()`). */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isValidId(value: unknown): value is string {
+  return typeof value === "string" && UUID_RE.test(value);
+}
+
+function toFiniteNumber(value: unknown): number | null {
+  const n = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  return Number.isFinite(n) ? n : null;
+}
+
 /** Carrito persistido sin snapshot de volumen: usar `price` como lista y no aplicar volumen. */
 export function normalizeIncomingCartItem(item: CartItem): CartItem {
-  const unitListPrice = item.unitListPrice ?? item.price;
+  const unitListPrice = toFiniteNumber(item.unitListPrice) ?? toFiniteNumber(item.price) ?? 0;
   const steps = item.discount_steps;
   const safeSteps: Json = Array.isArray(steps) ? (steps as Json) : ([] as unknown as Json);
   const vidRaw = item.variant_id;
-  const vid =
+  const vidCandidate =
     typeof vidRaw === "string" && vidRaw.trim()
       ? vidRaw.trim()
       : typeof vidRaw === "number" && Number.isFinite(vidRaw)
         ? String(vidRaw)
         : undefined;
+  // Un variant_id con forma inválida (no-UUID) se descarta como si no viniera:
+  // el resto de la línea (name/price/imagen) sigue siendo válido y usable.
+  const vid = vidCandidate && isValidId(vidCandidate) ? vidCandidate : undefined;
+  const rawImage = typeof item.image === "string" ? item.image : "";
   return {
     ...item,
+    image: isAllowedImageSrc(rawImage) ? rawImage : "",
+    price: toFiniteNumber(item.price) ?? 0,
+    quantity: Math.max(1, Math.floor(toFiniteNumber(item.quantity) ?? 1)),
     variant_id: vid,
     has_variants: item.has_variants === true ? true : item.has_variants === false ? false : undefined,
     product_slug:
@@ -120,6 +140,33 @@ export function normalizeIncomingCartItem(item: CartItem): CartItem {
     discount_steps: safeSteps,
     discount_label: item.discount_label ?? null,
   };
+}
+
+/**
+ * Valida una línea de carrito recién leída de `localStorage` (o de cualquier
+ * fuente no confiable: versión vieja, edición manual, datos corruptos).
+ * `null` si la línea es irrecuperable (sin `product_id` válido, sin nombre,
+ * o sin precio/cantidad utilizables) — el llamador debe descartarla.
+ */
+export function sanitizePersistedCartItem(raw: unknown): CartItem | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+
+  const productId = typeof r.product_id === "string" ? r.product_id.trim() : "";
+  if (!isValidId(productId)) return null; // ej. IDs mock viejos ("prod-1"), o campo ausente/corrupto
+
+  const name = typeof r.name === "string" ? r.name.trim() : "";
+  if (!name) return null;
+
+  const price = toFiniteNumber(r.price);
+  if (price === null || price < 0) return null;
+
+  return normalizeIncomingCartItem({
+    ...(r as unknown as CartItem),
+    product_id: productId,
+    name,
+    price,
+  });
 }
 
 /** Línea de carrito inválida para checkout: variante obligatoria sin `variant_id`. */
@@ -177,6 +224,12 @@ export const useCartStore = create<CartStore>()(
       closeDrawer: () => set({ isOpen: false }),
 
       add(item) {
+        if (!isValidId(item.product_id)) {
+          if (process.env.NODE_ENV === "development") {
+            console.warn("Intento de agregar al carrito con product_id inválido", item.product_id);
+          }
+          return false;
+        }
         const normalizedIn = recalcItemPrice(normalizeIncomingCartItem(item));
         if (normalizedIn.has_variants === true && !normalizedIn.variant_id?.trim()) {
           if (process.env.NODE_ENV === "development") {
@@ -248,13 +301,36 @@ export const useCartStore = create<CartStore>()(
     }),
     {
       name: "thegate-cart",
-      version: 5,
+      // v6: valida cada línea persistida (sanitizePersistedCartItem) — descarta
+      // líneas con product_id no-UUID (ej. IDs de productos mock ya
+      // eliminados), sin nombre, o con precio/cantidad no numéricos, en vez de
+      // confiar ciegamente en lo que había en localStorage.
+      version: 6,
       migrate: (persisted) => {
-        const raw = persisted as { items?: CartItem[] } | undefined;
-        const items = Array.isArray(raw?.items) ? raw.items : [];
-        return {
-          items: items.map((i) => recalcItemPrice(normalizeIncomingCartItem(i))),
-        };
+        // Defensivo a propósito: zustand ya envuelve `migrate` en un catch
+        // interno (un error acá deja el carrito en su estado inicial vacío,
+        // nunca rompe la carga de la página), pero devolvemos `{ items: [] }`
+        // explícitamente ante cualquier forma inesperada para no depender de eso.
+        try {
+          const raw = persisted as { items?: unknown } | null | undefined;
+          const rawItems = Array.isArray(raw?.items) ? raw.items : [];
+          const items: CartItem[] = [];
+          for (const rawItem of rawItems) {
+            const sanitized = sanitizePersistedCartItem(rawItem);
+            if (sanitized) items.push(recalcItemPrice(sanitized));
+          }
+          return { items };
+        } catch (error) {
+          if (process.env.NODE_ENV === "development") {
+            console.warn("[cart] no se pudo migrar el carrito persistido, se reinicia vacío", error);
+          }
+          return { items: [] };
+        }
+      },
+      onRehydrateStorage: () => (_state, error) => {
+        if (error && process.env.NODE_ENV === "development") {
+          console.warn("[cart] error leyendo carrito persistido (localStorage corrupto/inválido):", error);
+        }
       },
       partialize: (state) => ({ items: state.items }),
     }

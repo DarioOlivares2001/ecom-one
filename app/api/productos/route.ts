@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
 
+/** Stub sin uso real: no hay consumidores en el código. El catálogo público real es `/productos` (server component). */
 export async function GET() {
-  // TODO: listar productos desde Supabase
   return NextResponse.json({ productos: [] });
 }
 
 export async function POST() {
-  // TODO: crear producto en Supabase
   return NextResponse.json({ producto: null }, { status: 201 });
 }

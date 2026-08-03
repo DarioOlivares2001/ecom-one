@@ -13,6 +13,7 @@ import { toast } from "@/components/ui/Toast";
 import type { Product } from "@/lib/db/types";
 import { productRequiresVariantChoice } from "@/lib/product/catalogVariants";
 import { getDiscountedUnitPrice } from "@/lib/discounts";
+import { isAllowedImageSrc } from "@/lib/images/isAllowedImageSrc";
 
 interface StickyAddToCartProps {
   product: Product;
@@ -67,7 +68,8 @@ export function StickyAddToCart({
   };
   const displayUnit = getDiscountedUnitPrice(volumeInput, 1, listUnit);
   const effectiveStock = stock ?? product.stock;
-  const effectiveImage = image ?? product.images?.[0] ?? "";
+  const rawImage = image ?? product.images?.[0] ?? "";
+  const effectiveImage = isAllowedImageSrc(rawImage) ? rawImage : "";
 
   // Referencia ("antes") = el mayor entre compare_at_price del lado seleccionado
   // y el listUnit; sirve sólo para el tachado visual.

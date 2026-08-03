@@ -1,4 +1,4 @@
-import { getStoreSettingsRow } from "@/lib/db/repositories/storeSettings";
+import { getStoreSettingsRow, upsertStoreSettings } from "@/lib/db/repositories/storeSettings";
 import type { StoreSettings } from "@/lib/db/types";
 
 export interface StoreSettingsView {
@@ -62,9 +62,15 @@ export interface StoreSettingsView {
   clarity_enabled: boolean;
 }
 
+/**
+ * Valores neutros para una instalación nueva de ecom-one. Sin branding, copy
+ * ni datos de contacto de ninguna tienda real — el admin los reemplaza desde
+ * `/admin/configuracion` la primera vez que guarda. Nunca debe llegar al
+ * storefront como si fuera la configuración real de una tienda con marca.
+ */
 export const DEFAULT_STORE_SETTINGS: StoreSettingsView = {
-  store_name: "PonkyBonk",
-  store_tagline: "Todo para gatos felices",
+  store_name: "Mi Tienda",
+  store_tagline: "",
   logo_url: "",
   logo_square_url: "",
   favicon_url: "",
@@ -75,15 +81,15 @@ export const DEFAULT_STORE_SETTINGS: StoreSettingsView = {
   navbar_text_color: "#111111",
   footer_background_color: "#111111",
   footer_text_color: "#FFFFFF",
-  primary_color: "#6D28D9",
-  accent_color: "#F472B6",
+  primary_color: "#111111",
+  accent_color: "#6B7280",
   background_color: "#FAFAFA",
   surface_color: "#FFFFFF",
   text_color: "#111111",
   text_muted_color: "#6B7280",
   border_color: "#E5E7EB",
-  theme_preset: "pets_purple_pink",
-  branding_mode: "logo_and_text",
+  theme_preset: "custom",
+  branding_mode: "text",
   logo_size_desktop: 32,
   logo_size_mobile: 28,
   brand_text_scale: 1,
@@ -92,19 +98,19 @@ export const DEFAULT_STORE_SETTINGS: StoreSettingsView = {
   font_heading: "Space Grotesk",
   font_body: "Inter",
   theme_manual_override: false,
-  support_whatsapp: "56900000000",
+  support_whatsapp: "",
   contact_email: "",
-  support_instagram: "https://instagram.com/ponkybonk",
-  support_tiktok: "https://tiktok.com/@ponkybonk",
+  support_instagram: "",
+  support_tiktok: "",
   hero_banner_desktop_url: "",
   hero_banner_mobile_url: "",
   hero_overlay_mode: "manual",
   hero_overlay_opacity: 60,
   enable_whatsapp_checkout: false,
   order_number_offset: 0,
-  shipping_cost_clp: 3_990,
-  shipping_free_threshold_clp: 30_000,
-  enable_whatsapp_fab: true,
+  shipping_cost_clp: 0,
+  shipping_free_threshold_clp: 0,
+  enable_whatsapp_fab: false,
   meta_pixel_id: "",
   meta_capi_access_token: "",
   meta_pixel_enabled: false,
@@ -277,10 +283,66 @@ function normalizeSettings(row: StoreSettings | null): StoreSettingsView {
   };
 }
 
+function isUniqueViolation(error: unknown): boolean {
+  const code = (error as { code?: string } | null)?.code;
+  const message = error instanceof Error ? error.message : String(error);
+  return code === "23505" || message.toLowerCase().includes("duplicate");
+}
+
+/**
+ * Crea la fila única de `store_settings` con valores neutros la primera vez
+ * que se necesita (instalación nueva, tabla vacía). `uq_store_settings_singleton`
+ * garantiza a nivel de BD que nunca hay más de una fila: si dos requests
+ * concurrentes intentan crearla a la vez, la segunda inserción falla con
+ * unique violation y simplemente se relee la fila que ya insertó la primera.
+ */
+async function ensureStoreSettingsRow(): Promise<StoreSettings> {
+  try {
+    // Se listan explícitamente (en vez de confiar en los defaults de columna)
+    // porque varios defaults de columna todavía son los del preset de marca
+    // original (colores morado/rosado, logo_and_text, whatsapp FAB activado) —
+    // no son neutros para una instalación nueva de ecom-one.
+    return await upsertStoreSettings({
+      store_name: DEFAULT_STORE_SETTINGS.store_name,
+      store_tagline: DEFAULT_STORE_SETTINGS.store_tagline,
+      theme_preset: DEFAULT_STORE_SETTINGS.theme_preset,
+      branding_mode: DEFAULT_STORE_SETTINGS.branding_mode,
+      primary_color: DEFAULT_STORE_SETTINGS.primary_color,
+      accent_color: DEFAULT_STORE_SETTINGS.accent_color,
+      background_color: DEFAULT_STORE_SETTINGS.background_color,
+      surface_color: DEFAULT_STORE_SETTINGS.surface_color,
+      text_color: DEFAULT_STORE_SETTINGS.text_color,
+      text_muted_color: DEFAULT_STORE_SETTINGS.text_muted_color,
+      border_color: DEFAULT_STORE_SETTINGS.border_color,
+      brand_text_color: DEFAULT_STORE_SETTINGS.brand_text_color,
+      navbar_background_color: DEFAULT_STORE_SETTINGS.navbar_background_color,
+      navbar_text_color: DEFAULT_STORE_SETTINGS.navbar_text_color,
+      footer_background_color: DEFAULT_STORE_SETTINGS.footer_background_color,
+      footer_text_color: DEFAULT_STORE_SETTINGS.footer_text_color,
+      font_heading: DEFAULT_STORE_SETTINGS.font_heading,
+      font_body: DEFAULT_STORE_SETTINGS.font_body,
+      hero_overlay_mode: DEFAULT_STORE_SETTINGS.hero_overlay_mode,
+      hero_overlay_opacity: DEFAULT_STORE_SETTINGS.hero_overlay_opacity,
+      enable_whatsapp_checkout: DEFAULT_STORE_SETTINGS.enable_whatsapp_checkout,
+      enable_whatsapp_fab: DEFAULT_STORE_SETTINGS.enable_whatsapp_fab,
+      shipping_cost_clp: DEFAULT_STORE_SETTINGS.shipping_cost_clp,
+      shipping_free_threshold_clp: DEFAULT_STORE_SETTINGS.shipping_free_threshold_clp,
+      order_number_offset: DEFAULT_STORE_SETTINGS.order_number_offset,
+    });
+  } catch (error) {
+    if (!isUniqueViolation(error)) throw error;
+    const existing = await getStoreSettingsRow();
+    if (existing) return existing;
+    throw error;
+  }
+}
+
 export async function getStoreSettings(): Promise<StoreSettingsView> {
   try {
     const data = await getStoreSettingsRow();
-    return normalizeSettings((data as StoreSettings | null) ?? null);
+    if (data) return normalizeSettings(data);
+    const created = await ensureStoreSettingsRow();
+    return normalizeSettings(created);
   } catch (error) {
     console.error("[store_settings] Excepción leyendo configuración:", error);
     return DEFAULT_STORE_SETTINGS;

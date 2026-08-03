@@ -1,4 +1,5 @@
 import { normalizeOptimizedImageUrl } from "@/lib/images/normalizeOptimizedImageUrl";
+import { isAllowedImageSrc } from "@/lib/images/isAllowedImageSrc";
 import type { Json } from "@/lib/db/types";
 
 /** Margen mínimo de seguridad: si la oferta deja menos de esto, se anula el descuento. */
@@ -198,9 +199,9 @@ export function pickCheckoutRecommendations(
       name: p.name,
       price: p.price,
       compare_at_price: p.compare_at_price ?? null,
-      images: (Array.isArray(p.images) ? p.images : []).map((img) =>
-        normalizeOptimizedImageUrl(String(img ?? ""))
-      ),
+      images: (Array.isArray(p.images) ? p.images : [])
+        .map((img) => normalizeOptimizedImageUrl(String(img ?? "")))
+        .filter(isAllowedImageSrc),
       offerPrice,
       discountPercent,
       savings,

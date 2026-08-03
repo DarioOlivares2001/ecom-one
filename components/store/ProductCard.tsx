@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/Badge";
 import { toast } from "@/components/ui/Toast";
 import type { Product } from "@/lib/db/types";
 import { productRequiresVariantChoice } from "@/lib/product/catalogVariants";
+import { isAllowedImageSrc } from "@/lib/images/isAllowedImageSrc";
 
 interface ProductCardProps {
   product: Product;
@@ -39,7 +40,8 @@ export function ProductCard({ product, priority = false, selectedVariant }: Prod
   const add = useCartStore((s) => s.add);
   const openDrawer = useCartStore((s) => s.openDrawer);
 
-  const coverImage = product.images?.[0] ?? "";
+  const coverImageRaw = product.images?.[0] ?? "";
+  const coverImage = isAllowedImageSrc(coverImageRaw) ? coverImageRaw : "";
   const needsVariantChoice = productRequiresVariantChoice(product);
   const inStock = product.stock > 0;
 

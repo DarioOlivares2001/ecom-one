@@ -1,0 +1,1 @@
+ALTER TABLE "store_settings" ALTER COLUMN "order_number_offset" SET DEFAULT 0;

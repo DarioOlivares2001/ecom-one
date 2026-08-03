@@ -6,6 +6,7 @@ import Image from "next/image";
 import { AnimatePresence, motion } from "framer-motion";
 import { X, Plus, Minus, ShoppingBag, MessageCircle, ArrowLeft } from "lucide-react";
 import { useCartStore, cartItemToDiscountInput, cartItemNeedsVariantFix, type CartItem } from "@/lib/cart/store";
+import { SafeImage } from "@/components/ui/SafeImage";
 import { formatPrice } from "@/lib/utils/format";
 import { Button } from "@/components/ui/Button";
 import {
@@ -487,7 +488,7 @@ export function CartDrawer({
                     >
                       {/* Product image */}
                       <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-[var(--radius-md)] bg-[var(--color-background)]">
-                        <Image
+                        <SafeImage
                           src={item.image}
                           alt={item.name}
                           fill

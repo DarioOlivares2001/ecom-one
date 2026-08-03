@@ -4,6 +4,7 @@ import Image from "next/image";
 import { Plus, Pencil, PackageOpen } from "lucide-react";
 import { listProductsByAdminTab, type AdminProductTab } from "@/lib/db/repositories";
 import { normalizeProductCategory } from "@/lib/product/categories";
+import { isAllowedImageSrc } from "@/lib/images/isAllowedImageSrc";
 import { formatPrice } from "@/lib/utils/format";
 import {
   ArchiveProductButton,
@@ -114,7 +115,7 @@ export default async function AdminProductosPage({
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-zinc-100">
-                          {p.images?.[0] ? (
+                          {isAllowedImageSrc(p.images?.[0]) ? (
                             <Image
                               src={p.images[0]}
                               alt={p.name}

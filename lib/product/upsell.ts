@@ -1,5 +1,6 @@
 import type { Json, Product } from "@/lib/db/types";
 import { normalizeOptimizedImageUrl } from "@/lib/images/normalizeOptimizedImageUrl";
+import { isAllowedImageSrc } from "@/lib/images/isAllowedImageSrc";
 
 const CONTEXTS = [
   {
@@ -32,6 +33,12 @@ export type ProductUpsellSuggestion = {
 
 function buildBlob(p: Product) {
   return [p.name, p.category ?? "", ...(p.tags ?? [])].join(" ").toLowerCase();
+}
+
+/** URL optimizada solo si además es de un host permitido (nunca una imagen rota, ej. *.supabase.co). */
+function safeUpsellImage(url: string): string {
+  const normalized = normalizeOptimizedImageUrl(url);
+  return isAllowedImageSrc(normalized) ? normalized : "";
 }
 
 export function pickProductUpsellSuggestions(
@@ -73,7 +80,7 @@ export function pickProductUpsellSuggestions(
       id: p.id,
       slug: p.slug,
       name: p.name,
-      image: normalizeOptimizedImageUrl(p.images?.[0] ?? ""),
+      image: safeUpsellImage(p.images?.[0] ?? ""),
       price: p.price,
       offerPrice: p.price,
       discountPercent: 0,

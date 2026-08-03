@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "admin:create": "tsx scripts/create-admin-user.ts",
     "audit:product-images": "node scripts/list-product-images.mjs",
     "optimize:product-images": "node scripts/optimize-product-images.mjs",
     "cleanup:original-product-images": "node scripts/cleanup-original-product-images.mjs",

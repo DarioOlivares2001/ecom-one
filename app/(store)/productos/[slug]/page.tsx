@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ProductClient } from "./ProductClient";
-import { getMockProduct, MOCK_PRODUCTS } from "@/lib/utils/mock-products";
 import type { Product, ProductVariant, Review } from "@/lib/db/types";
 import {
   getActiveProductBySlug,
@@ -20,14 +19,14 @@ export const revalidate = 0;
 
 // ─── Data fetching ────────────────────────────────────────────────────────────
 
+/** Producto real desde Neon. No encontrado o error de conexión → null (404), nunca un producto ficticio. */
 async function getProduct(slug: string): Promise<Product | null> {
   try {
-    const product = await getActiveProductBySlug(slug);
-    if (product) return product;
-  } catch {
-    // DB not configured yet
+    return await getActiveProductBySlug(slug);
+  } catch (error) {
+    console.error("[producto-detalle] error consultando producto:", error);
+    return null;
   }
-  return getMockProduct(slug);
 }
 
 async function getProductVariants(productId: string): Promise<ProductVariant[]> {
@@ -49,12 +48,11 @@ async function getReviews(productId: string): Promise<Review[]> {
 
 async function getUpsellCandidates(excludeId: string): Promise<Product[]> {
   try {
-    const candidates = await listActiveProductsExcluding(excludeId, 30);
-    if (candidates.length) return candidates;
-  } catch {
-    // DB not configured yet
+    return await listActiveProductsExcluding(excludeId, 30);
+  } catch (error) {
+    console.error("[producto-detalle] error consultando upsells:", error);
+    return [];
   }
-  return MOCK_PRODUCTS.filter((p) => p.id !== excludeId && p.active && p.stock > 0);
 }
 
 // ─── Metadata ─────────────────────────────────────────────────────────────────

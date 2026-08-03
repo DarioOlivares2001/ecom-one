@@ -9,6 +9,7 @@ import { clsx } from "clsx";
 import { Lock, ChevronDown, ShoppingBag, ArrowLeft, Truck, MessageCircle } from "lucide-react";
 import { useCartStore, type CartItem, cartItemNeedsVariantFix } from "@/lib/cart/store";
 import { pixelEvents } from "@/lib/pixel/events";
+import { isAllowedImageSrc } from "@/lib/images/isAllowedImageSrc";
 import { formatPrice } from "@/lib/utils/format";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -319,7 +320,7 @@ function OrderSummaryContent({
         {items.map((item) => (
           <li key={`${item.product_id}-${item.variant_id ?? item.variant ?? ""}`} className="flex gap-3">
             <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-[var(--radius-sm)] bg-[var(--color-background)] border border-[var(--color-border)]">
-              {item.image ? (
+              {isAllowedImageSrc(item.image) ? (
                 <Image src={item.image} alt={item.name} fill className="object-cover" sizes="56px" />
               ) : (
                 <div className="flex h-full w-full items-center justify-center">

@@ -23,18 +23,15 @@ function r2RemotePattern() {
 const r2Pattern = r2RemotePattern();
 
 const nextConfig = {
+  // Espejo público de R2_PUBLIC_URL (ya es una URL pública por diseño, ver
+  // .env.example) para que lib/images/isAllowedImageSrc.ts pueda validar el
+  // host de una imagen tanto en Server como en Client Components, sin
+  // exponer ninguna variable nueva ni secreta.
+  env: {
+    NEXT_PUBLIC_R2_PUBLIC_URL: process.env.R2_PUBLIC_URL?.trim() || "",
+  },
   images: {
-    remotePatterns: [
-      ...(r2Pattern ? [r2Pattern] : []),
-      {
-        protocol: 'https',
-        hostname: 'placehold.co',
-      },
-      {
-        protocol: 'https',
-        hostname: 'picsum.photos',
-      },
-    ],
+    remotePatterns: [...(r2Pattern ? [r2Pattern] : [])],
   },
 };
 

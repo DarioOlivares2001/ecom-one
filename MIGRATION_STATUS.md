@@ -1,10 +1,10 @@
 # Migración ecom-one: Supabase → Neon + Drizzle + Cloudflare R2
 
-Este documento se actualiza durante toda la migración. Última actualización: 2026-08-02.
+Este documento se actualiza durante toda la migración. Última actualización: 2026-08-03.
 
 ## Fase actual
 
-**Migración completa (Fases 0–10).** Ver checklist de despliegue al final de este documento antes de lanzar a producción.
+**Migración completa (Fases 0–10) + Fase 11: correcciones tras prueba local con Neon vacío.** Ver checklist de despliegue más abajo antes de lanzar a producción.
 
 ## Resumen de fases
 
@@ -21,6 +21,7 @@ Este documento se actualiza durante toda la migración. Última actualización: 
 | 8. Pruebas | ✅ Completada |
 | 9. Rendimiento y seguridad | ✅ Completada |
 | 10. Preparación de despliegue | ✅ Completada |
+| 11. Correcciones instalación nueva/vacía (mocks, imágenes, carrito, admin, store_settings) | ✅ Completada |
 
 ---
 
@@ -260,7 +261,7 @@ No ejecutado en esta sesión (sin deploy, sin git push, según instrucción). An
 - [ ] `NEXT_PUBLIC_META_PIXEL_ID` — si se usa tracking de Meta.
 
 **Antes del primer deploy:**
-- [ ] Crear el primer usuario admin en la base de producción con `scripts/create-admin-user.ts` (ya migrado a Drizzle en Fase 4) — no hay usuarios admin por defecto.
+- [ ] Crear el primer usuario admin en la base de producción con `npm run admin:create` (interactivo — pide email/contraseña por consola, ver Fase 11) — no hay usuarios admin por defecto.
 - [ ] Configurar el cron de Vercel (o equivalente) para `POST /api/cron/cancel-stale-orders` con el header/`Authorization` que espera la ruta usando `CRON_SECRET`.
 - [ ] Confirmar `next.config.mjs` → `images.remotePatterns` resuelve bien `R2_PUBLIC_URL` de producción (se parsea en build time; falla silenciosamente a `null` si la URL es inválida, no rompe el build).
 
@@ -274,6 +275,80 @@ No ejecutado en esta sesión (sin deploy, sin git push, según instrucción). An
 - [ ] Evaluar upgrade mayor de `next` (14.2.35 → 16.x) y `sharp` (0.34 → 0.35) para cerrar las vulnerabilidades de `npm audit` que requieren `--force` (ver Fase 9) — requiere pruebas de regresión propias, no se hizo en esta sesión por el riesgo de romper la app.
 - [ ] `tmp-product-images-audit.csv` (tracked en git, contiene URLs públicas antiguas de `*.supabase.co` de un audit previo) — artefacto obsoleto, sin secretos, se dejó para que el usuario decida si lo borra.
 - [ ] Rate limiting en `/api/admin/login` y `/api/cuenta/login` (no existe hoy; requiere decidir infraestructura — Redis/Upstash u otro — no viable como cambio local sin esa pieza de infra).
+
+## Fase 11 — Correcciones tras prueba local con Neon vacío (completada)
+
+Se probó la app localmente contra una base Neon **genuinamente vacía** y aparecieron 5 fallos, todos corregidos en esta sesión. Commit local: `fix: initialize empty store and harden cart`.
+
+### 1. Eliminados los fallbacks a productos mock
+
+- Borrado `lib/utils/mock-products.ts` (8 productos ficticios + `getMockProduct`).
+- `app/(store)/productos/page.tsx`: `getProducts()` ya no cae a `MOCK_PRODUCTS` si la query da 0 filas o falla — devuelve `[]` (la UI ya tenía un estado vacío propio con ícono y "No hay productos disponibles", solo faltaba dejar de ocultarlo).
+- `app/(store)/productos/[slug]/page.tsx`: `getProduct()` ya no cae a `getMockProduct(slug)` (antes devolvía `MOCK_PRODUCTS[0]` para **cualquier** slug inexistente, incluso ajeno a un mock — un 404 real se disfrazaba de producto ficticio). `getUpsellCandidates()` ya no cae a productos mock filtrados.
+- `lib/store/landing-home-catalog.ts`: borrado `LANDING_FALLBACK_INDIVIDUAL_PRODUCTS` (4 "packs" ficticios que aparecían en el home cuando el catálogo estaba vacío); `resolveLandingBentoSections()` ahora deja el grid vacío (ya soportado por `BentoGrid`, que retorna `null` si `items.length === 0`).
+- Confirmado con `rg` (sin uso de mocks en ningún flujo real) y con logs de servidor en vivo: `[perf-products] products count: 0` con la base vacía real, no ficticia.
+- No quedan tests automatizados en el repo que dependieran de estos mocks (confirmado, no hay `.test.ts`/`.spec.ts`), así que no hubo que preservar ninguna copia para pruebas aisladas.
+
+### 2. Imágenes: ninguna URL no permitida llega a `next/image`
+
+- Nuevo `lib/images/isAllowedImageSrc.ts`: `isAllowedImageSrc(url)` acepta solo assets locales (`/...`) o URLs `https` cuyo host coincide con `R2_PUBLIC_URL`; `sanitizeImageUrls(urls)` filtra un array. Rechaza cualquier otro host, incluido `*.supabase.co`.
+- `next.config.mjs` ahora expone `NEXT_PUBLIC_R2_PUBLIC_URL` (espejo de `R2_PUBLIC_URL`, ya pública por diseño) vía `env`, para que el chequeo funcione igual en Server y Client Components sin pedir ninguna variable nueva. De paso se quitaron `placehold.co`/`picsum.photos` de `remotePatterns` (solo los usaban los mocks recién eliminados).
+- Nuevo `components/ui/SafeImage.tsx`: wrapper de `next/image` que renderiza un placeholder (`bg-gradient` neutro) si `isAllowedImageSrc(src)` es falso, en vez de dejar que `next/image` rompa el render.
+- Aplicado en todos los puntos donde se muestra una imagen de producto o de carrito: `ProductCard`, `StickyAddToCart`, `ProductClient` (galería — ahora sanea el array completo, no solo la portada), `CheckoutRecommendations`/`CartDrawer` (offers, vía saneo en el API), `CartDrawer`/`app/(store)/carrito/page.tsx` (imagen de línea de carrito, sin ningún guard antes — con `SafeImage`), `CheckoutClient` (guard con `isAllowedImageSrc`), listado admin de productos, editor de producto existente (preserva `unoptimized` para previews `blob:` de imágenes recién seleccionadas), home (`landing-home-catalog.ts` sanea el catálogo completo en el origen), `/api/upsells` y `/api/checkout/recommendations` (sanean antes de responder).
+- **Probado en vivo**: se insertó un producto de prueba con `images: ['https://<ref>.supabase.co/...']` directo en Neon — `/productos` y `/productos/[slug]` devuelven `200` (antes rompía), el `_next/image` optimizer nunca recibe esa URL (se confirmó con grep sobre el HTML servido), y la única aparición de la URL vieja queda en metadata (`og:image`, no pasa por el optimizador de imágenes, no rompe nada). Producto de prueba borrado después de verificar.
+- Deliberadamente **no** se restringió a solo-R2 el campo `photo_url` de reseñas ni las imágenes de los bloques de contenido admin (`MediaStripSection`/`BeforeAfterSection`) — son campos de URL libre por diseño (el admin/cliente puede enlazar cualquier imagen externa), no vienen de datos mock, y restringirlos habría sido un cambio de comportamiento no pedido.
+
+### 3. Carrito endurecido (`lib/cart/store.ts`)
+
+- Nueva validación `sanitizePersistedCartItem()`: descarta líneas sin `product_id` con forma de UUID válida (los productos reales siempre tienen UUID; esto es lo que filtra IDs de mocks viejos como `"prod-1"` o cualquier dato corrupto/manipulado), sin `name`, o con `price` no numérico/negativo. `quantity` inválida se corrige a `1` en vez de descartar la línea. `image` se sanea con `isAllowedImageSrc` (URL inválida → `""`, nunca se pierde el resto de la línea por una imagen rota).
+- `migrate()` de `persist` (bump `version: 5 → 6`) ahora usa `sanitizePersistedCartItem` en cada línea y está envuelto en try/catch que nunca propaga (devuelve `{ items: [] }` ante cualquier forma inesperada) — aunque zustand ya envuelve `migrate` en un catch interno (confirmado leyendo `node_modules/zustand/esm/middleware.mjs`: un JSON corrupto o un `migrate` que lanza ya caían de forma segura al estado inicial vacío, sin romper la carga de la página), se añadió de todos modos como defensa explícita y para poder loguear el error en dev vía `onRehydrateStorage`.
+- `add()` ahora también valida `product_id` (rechaza con `return false` si no es UUID), y `normalizeIncomingCartItem` coacciona `price`/`quantity` a números finitos siempre, no solo en la migración.
+- **Probado** con un harness que llama `sanitizePersistedCartItem` directamente (vía `tsx`) contra 12 casos: `null`, `undefined`, string suelto, objeto vacío, `product_id` tipo mock (`"prod-1"`), UUID válido sin nombre, `price` no numérico, `price` negativo, imagen de host no permitido, `quantity` 0, `quantity` como string, y un item totalmente válido — los primeros 7 se descartan (`null`), la imagen de host inválido se limpia a `""` sin perder la línea, `quantity` se corrige a `1`/se castea a número, y el item válido pasa intacto.
+
+### 4. Script de creación de admin: reescrito para ser interactivo y seguro
+
+- `scripts/create-admin-user.ts`: ahora pide **email y contraseña por consola** (ya no acepta `--email=`/`--password=` ni `ADMIN_SEED_*` — nada de valores por defecto inventados). La contraseña se pide dos veces (confirmación) con entrada oculta en una terminal real (`stdin.isTTY`, raw mode sin eco — no se imprime ni un asterisco); si no hay TTY (ej. pipe) cae a un prompt normal de `readline`, documentado en el propio código.
+- Si el email ya existe, muestra rol/estado actual y exige escribir literalmente `"SI"` para confirmar la sobrescritura; cualquier otra respuesta cancela sin tocar la fila. Si es nuevo, se crea directamente (`createAdminUser`, no el `upsertAdminUserByEmail` silencioso que se usaba antes).
+- Rol por defecto: `owner` si es el primer admin de la base (detectado con `listAdminUsers()`), `admin` en el resto de los casos; validado contra `owner`/`admin`/`operator`.
+- Nunca se imprime la contraseña ni su hash (se limpia la variable en memoria apenas se hashea con bcrypt cost 12, mismo costo que el resto del proyecto).
+- Nuevo script npm: `npm run admin:create` (ejecuta `tsx scripts/create-admin-user.ts`).
+- **Probado end-to-end** contra la base real (con un email/contraseña de prueba, borrados después): creación del primer admin (rol `owner` por defecto), rechazo de sobrescritura al responder distinto de `SI` (no modificó `updated_at`), y login exitoso contra `/api/admin/login` con la contraseña creada.
+- **Comando para crear el primer admin** (documentado también más abajo en el resumen final):
+  ```
+  npm run admin:create
+  ```
+
+### 5. `store_settings`: valores neutros + auto-inicialización real
+
+- `DEFAULT_STORE_SETTINGS` (`lib/store-settings/getStoreSettings.ts`) dejó de tener branding de PonkyBonk (`store_name: "PonkyBonk"`, tagline "Todo para gatos felices", preset `pets_purple_pink`, Instagram/TikTok `@ponkybonk`, WhatsApp `56900000000` inventado): ahora son valores neutros (`"Mi Tienda"`, sin tagline, `theme_preset: "custom"`, sin redes ni WhatsApp, `enable_whatsapp_fab: false`).
+- `getStoreSettings()` ya no se limita a devolver ese objeto en memoria cuando no hay fila: ahora llama a una nueva `ensureStoreSettingsRow()` que **inserta una fila real** con esos valores neutros la primera vez que se necesita. `uq_store_settings_singleton` (índice único sobre `(true)`) garantiza a nivel de Postgres que nunca hay más de una fila; ante una carrera entre dos requests concurrentes, la segunda inserción falla con `23505` (unique violation) y simplemente se relee la fila que ya insertó la primera (mismo patrón `isUniqueViolation` que ya existía en `lib/clientes/upsertClienteFromOrder.ts`). El panel admin sigue siendo la fuente de verdad para cualquier cambio posterior.
+- **Probado**: con `store_settings` vacía, cargar el home creó la fila automáticamente; verificado por SQL directo que quedó con `store_name: 'Mi Tienda'`, `theme_preset: 'custom'`, `primary_color: '#111111'`, `support_whatsapp: null`, `order_number_offset: 0` — nada de PonkyBonk.
+
+### 6. Copy hardcodeado de PonkyBonk retirado de componentes compartidos del storefront
+
+No solo el home (`app/(store)/page.tsx`, metadata y las dos secciones de problema/solución): el copy de marca estaba repetido en varios componentes que se renderizan en **todas** las páginas de la tienda, no gateados por `store_settings`:
+- `components/store/Hero.tsx`: "Soluciones premium para gatos felices" / "Elimina el olor de tu gato desde el primer uso" / "Entrega rápida en Rancagua" / link roto a `/#packs-ahorro` (esa ancla no existe en ninguna página) → copy neutro genérico, link corregido a `/productos`.
+- `components/store/PromoTickerBar.tsx`: barra de anuncios con las mismas frases de gatos/Rancagua → copy neutro.
+- `components/store/TrustBadges.tsx`: "Rancagua y alrededores" → "A todo el país".
+- `components/store/Footer.tsx`: línea fija "Entrega rápida en Rancagua y alrededores" concatenada después del tagline (aunque el tagline esté vacío) → se quitó, el footer ahora solo muestra el tagline si existe.
+- Plantillas de email (`lib/email/templates/{orderAdmin,orderCustomer,reviewPending}.ts`): fallback `|| "PonkyBonk"` → `|| "Mi Tienda"`.
+- **Verificado con grep sobre el HTML servido en vivo** (home + footer + navbar): cero coincidencias de "gato", "Rancagua" o "PonkyBonk" tras los cambios.
+- **Deliberadamente no tocado** (fuera de alcance — no es un fallback de estado vacío, es contenido/lógica de negocio explícita, no relacionado a ninguno de los 5 bugs reportados):
+  - `app/(store)/nosotros/page.tsx`: página editorial completa narrando el origen de "PonkyBonk" — reescribirla es una decisión de copywriting del dueño de la tienda, no un bug.
+  - `app/(store)/checkout/CheckoutClient.tsx`: el checkout tiene la región de despacho **fija** a "Libertador General Bernardo O'Higgins" (comunas: Rancagua, Machalí, Graneros) — es una restricción de cobertura deliberada y ya documentada en el propio código (`FIXED_REGION`, con instrucciones de cómo generalizarla a las 16 regiones si se necesita). Es lógica de checkout comercial real, explícitamente fuera del alcance de esta sesión.
+  - `components/store/SocialProof.tsx` y `SocialProofToast.tsx`: testimonios fabricados (nombres, ciudades, "500 clientes en Rancagua") — confirmado con `rg` que **ninguno de los dos se importa en `app/`**, son código muerto que nunca se renderiza. Se dejan documentados acá por si se quiere borrar en una limpieza futura, pero no afectan ningún flujo real.
+  - `app/admin/configuracion/page.tsx`: un `placeholder="PonkyBonk"` en el input de nombre de tienda — es solo un texto de ejemplo en el placeholder del formulario, no un valor real.
+
+### 7. `order_number_offset`: default de columna corregido
+
+- El default de la columna en `store_settings` era `1007398` (arrastrado de la numeración de pedidos real de PonkyBonk producción) — para una tienda nueva esto habría hecho que el primer pedido se mostrara como `SO01007399` en vez de `SO00000001`.
+- `lib/db/schema/storeSettings.ts`: default cambiado a `0`. Migración nueva `drizzle/0002_fix-order-number-offset-default.sql` (`ALTER TABLE store_settings ALTER COLUMN order_number_offset SET DEFAULT 0`), generada con `npx drizzle-kit generate` y aplicada directamente a la base de desarrollo (verificado por `information_schema.columns`).
+
+### Verificación final de esta fase
+
+- `npx tsc --noEmit`: 0 errores.
+- `npm run build`: 63 rutas, build exitoso.
+- Con Neon vacío: home y catálogo cargan sin mocks (confirmado por logs `products count: 0`); carrito vacío y con una línea válida sin errores; login admin tras crear el primer admin con `npm run admin:create`; producto creado con imagen real de R2 se muestra correctamente (`/_next/image` sirve la URL de R2); producto con URL vieja de Supabase no rompe la página (fallback visual, `200`). Todos los datos de prueba (productos, admin de prueba, objeto subido a R2) se borraron al terminar — la base queda con `products: 0`, `admin_users: 0`, `store_settings: 1` (fila neutra, autogenerada).
 
 ## Bloqueos externos
 

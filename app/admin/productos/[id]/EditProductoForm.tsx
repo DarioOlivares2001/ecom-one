@@ -15,6 +15,7 @@ import { compressImageIfNeeded } from "@/lib/images/compressImage";
 import { ECOMMERCE_CATEGORIES, normalizeProductCategory } from "@/lib/product/categories";
 import type { Json } from "@/lib/db/types";
 import { normalizeDiscountSteps } from "@/lib/discounts";
+import { isAllowedImageSrc } from "@/lib/images/isAllowedImageSrc";
 import {
   ADMIN_DEFAULT_LABEL,
   ADMIN_DEFAULT_MAX_PERCENT,
@@ -600,14 +601,20 @@ export function EditProductoForm({
                             : "border-zinc-200 hover:border-zinc-400"
                         )}
                       >
-                        <Image
-                          src={src}
-                          alt={`Imagen ${i + 1}`}
-                          fill
-                          className="object-cover"
-                          sizes="80px"
-                          unoptimized={img.type === "new"}
-                        />
+                        {img.type === "new" || isAllowedImageSrc(src) ? (
+                          <Image
+                            src={src}
+                            alt={`Imagen ${i + 1}`}
+                            fill
+                            className="object-cover"
+                            sizes="80px"
+                            unoptimized={img.type === "new"}
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-zinc-100 to-zinc-200 text-[10px] text-zinc-400">
+                            Imagen no disponible
+                          </div>
+                        )}
 
                         {/* Drag handle */}
                         <div className="absolute left-1 top-1 hidden group-hover:flex">

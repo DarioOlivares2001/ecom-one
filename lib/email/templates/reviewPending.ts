@@ -34,7 +34,7 @@ function stars(ratingRaw?: number | null) {
 }
 
 export function getReviewPendingHtml(payload: Payload) {
-  const storeName = escapeHtml(payload.branding?.storeName || "PonkyBonk");
+  const storeName = escapeHtml(payload.branding?.storeName || "Mi Tienda");
   const logoUrl = String(payload.branding?.logoUrl ?? "").trim();
   const contactEmail = escapeHtml(payload.branding?.contactEmail || "");
   const contactLine = contactEmail ? `<div>Contacto: ${contactEmail}</div>` : "";

@@ -6,6 +6,12 @@ import {
   type CheckoutRecRow,
 } from "@/lib/checkout/recommendations";
 import { normalizeOptimizedImageUrl } from "@/lib/images/normalizeOptimizedImageUrl";
+import { isAllowedImageSrc } from "@/lib/images/isAllowedImageSrc";
+
+function safeOfferImage(url: string): string {
+  const normalized = normalizeOptimizedImageUrl(url);
+  return isAllowedImageSrc(normalized) ? normalized : "";
+}
 
 export async function POST(request: Request) {
   try {
@@ -77,7 +83,7 @@ export async function POST(request: Request) {
         return {
           id: p.id,
           name: p.name,
-          image: normalizeOptimizedImageUrl(p.images?.[0] ?? ""),
+          image: safeOfferImage(p.images?.[0] ?? ""),
           price: list,
           compare_at_price: base?.compare_at_price ?? p.compare_at_price ?? null,
           offerPrice,

@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
-import Image from "next/image";
 import Link from "next/link";
+import { SafeImage } from "@/components/ui/SafeImage";
 import { Plus, Minus, X, ShoppingBag, ArrowLeft } from "lucide-react";
 import {
   useCartStore,
@@ -187,7 +187,7 @@ export default function CarritoPage() {
               className="flex gap-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
             >
               <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-lg bg-[var(--color-background)]">
-                <Image
+                <SafeImage
                   src={item.image}
                   alt={item.name}
                   fill

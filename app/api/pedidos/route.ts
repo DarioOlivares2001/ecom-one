@@ -5,11 +5,11 @@ import { NextResponse } from "next/server";
  * (checkout → Flow mock o live). Este endpoint queda como stub / futura API pública.
  */
 export async function GET() {
-  // TODO: listar pedidos desde Supabase
+  // Stub sin uso real; ver comentario arriba.
   return NextResponse.json({ pedidos: [] });
 }
 
 export async function POST() {
-  // TODO: crear pedido en Supabase
+  // Stub sin uso real; ver comentario arriba.
   return NextResponse.json({ pedido: null }, { status: 201 });
 }

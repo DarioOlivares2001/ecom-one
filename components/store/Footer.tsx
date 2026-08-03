@@ -65,9 +65,9 @@ export function Footer({ settings }: { settings: StoreSettingsView }) {
                 {settings.store_name}
               </span>
             </Link>
-            <p className="text-sm leading-relaxed opacity-80">
-              {settings.store_tagline}<br />Entrega rápida en Rancagua y alrededores.
-            </p>
+            {settings.store_tagline ? (
+              <p className="text-sm leading-relaxed opacity-80">{settings.store_tagline}</p>
+            ) : null}
             <div className="flex items-center gap-4">
               <a
                 href={instagramUrl}

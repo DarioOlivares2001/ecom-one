@@ -4,7 +4,7 @@ const badges = [
   {
     icon: Truck,
     label: "Entrega rápida",
-    sub: "Rancagua y alrededores",
+    sub: "A todo el país",
   },
   {
     icon: ShieldCheck,

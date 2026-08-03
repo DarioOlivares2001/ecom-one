@@ -53,7 +53,7 @@ export const storeSettings = pgTable("store_settings", {
   heroOverlayMode: text("hero_overlay_mode").default("gradient"),
   heroOverlayOpacity: integer("hero_overlay_opacity").default(60),
 
-  orderNumberOffset: integer("order_number_offset").default(1007398),
+  orderNumberOffset: integer("order_number_offset").default(0),
 
   shippingCostClp: integer("shipping_cost_clp").notNull().default(3990),
   shippingFreeThresholdClp: integer("shipping_free_threshold_clp").notNull().default(30000),

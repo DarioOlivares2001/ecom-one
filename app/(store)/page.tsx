@@ -9,8 +9,8 @@ import { resolveLandingBentoSections } from "@/lib/store/landing-home-catalog";
 import { formatPrice } from "@/lib/utils/format";
 
 export const metadata: Metadata = {
-  title: "Tienda para gatos",
-  description: "La mejor experiencia de compra online del país. Diseño editorial, checkout ultra-fluido, mobile-first.",
+  title: "Tienda online",
+  description: "Explora nuestro catálogo y compra con confianza: despacho rápido y checkout simple.",
 };
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -30,14 +30,14 @@ export default async function HomePage() {
 
       <section className="mx-auto w-full max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
         <h2 className="mb-8 font-display text-3xl font-bold text-[var(--color-text)] sm:text-4xl">
-          ¿Te pasa esto con tu gato?
+          ¿Buscas productos en los que puedas confiar?
         </h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 sm:gap-4">
           {[
-            "Mal olor en la casa, incluso limpiando seguido",
-            "Arena que no absorbe y ensucia todo",
-            "Tu gato deja arena por toda la casa",
-            "Gastando dinero en arena que no funciona",
+            "Productos que no cumplen lo que prometen",
+            "Envíos lentos o poco confiables",
+            "Atención al cliente que no responde",
+            "Precios poco transparentes",
           ].map((problem) => (
             <article
               key={problem}
@@ -48,7 +48,7 @@ export default async function HomePage() {
           ))}
         </div>
         <p className="mx-auto mt-8 max-w-2xl text-center text-base font-medium text-[var(--color-text)] sm:text-lg">
-          El problema no es tu gato, es la arena que estás usando.
+          Con nosotros, comprar online no tiene por qué ser así.
         </p>
         <div className="mt-6 flex justify-center">
           <Link href="/productos">
@@ -61,17 +61,16 @@ export default async function HomePage() {
 
       <section className="mx-auto w-full max-w-7xl border-t border-[var(--color-border)] px-4 py-12 sm:px-6 sm:py-14 lg:px-8">
         <h2 className="mb-6 text-center font-display text-3xl font-bold text-[var(--color-text)] sm:mb-8 sm:text-4xl">
-          La solución está en usar productos que realmente funcionan
+          Productos seleccionados con criterio
         </h2>
         <p className="mx-auto mb-8 max-w-2xl text-center text-base leading-relaxed text-[var(--color-text-muted)] sm:text-lg">
-          Nuestros productos están diseñados para eliminar olores, mantener tu hogar limpio y facilitar tu día a día con
-          tu gato.
+          Elegimos cada producto pensando en calidad, utilidad real y una buena experiencia de compra de principio a fin.
         </p>
         <div className="mx-auto grid max-w-4xl grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
           {[
-            "Control efectivo de olores",
-            "Menos suciedad en el hogar",
-            "Mayor duración y rendimiento",
+            "Calidad verificada",
+            "Despacho rápido y seguro",
+            "Soporte cuando lo necesitas",
           ].map((item) => (
             <article
               key={item}
@@ -82,7 +81,7 @@ export default async function HomePage() {
           ))}
         </div>
         <p className="mx-auto mt-8 max-w-2xl text-center text-base font-medium text-[var(--color-text)] sm:text-lg">
-          Deja de gastar dinero en soluciones que no funcionan.
+          Compra con confianza, sin sorpresas.
         </p>
         <div className="mt-6 flex justify-center">
           <Link href="/productos">
@@ -148,7 +147,7 @@ export default async function HomePage() {
 
       <section className="mx-auto w-full max-w-7xl border-t border-[var(--color-border)] px-4 py-14 sm:px-6 lg:px-8">
         <p className="mx-auto max-w-2xl text-center text-base font-medium text-[var(--color-text)] sm:text-lg">
-          Compra hoy y elimina el olor desde el primer uso
+          Encuentra lo que buscas y compra hoy mismo
         </p>
         <div className="mt-6 flex justify-center">
           <Link href="/productos">

@@ -2,79 +2,10 @@ import type { BentoItem } from "@/components/store/BentoGrid";
 import type { Product } from "@/lib/db/types";
 import { listActiveProducts } from "@/lib/db/repositories";
 import { normalizeProductCategory } from "@/lib/product/categories";
+import { sanitizeImageUrls } from "@/lib/images/isAllowedImageSrc";
 
 const MAX_INDIVIDUALS = 4;
 const MAX_OFFERS = 6;
-
-function isoNow(): string {
-  return new Date().toISOString();
-}
-
-function makeProduct(p: Partial<Product> & Pick<Product, "id" | "slug" | "name" | "price" | "images" | "category">): Product {
-  return {
-    description: p.description ?? "",
-    compare_at_price: p.compare_at_price ?? null,
-    cost_price: p.cost_price ?? null,
-    stock: p.stock ?? 99,
-    tags: p.tags ?? [],
-    variants: p.variants ?? null,
-    has_variants: p.has_variants ?? false,
-    options: p.options ?? null,
-    meta_title: p.meta_title ?? null,
-    meta_desc: p.meta_desc ?? null,
-    active: p.active ?? true,
-    deleted_at: p.deleted_at ?? null,
-    created_at: p.created_at ?? isoNow(),
-    updated_at: p.updated_at ?? isoNow(),
-    ...p,
-    discount_enabled: p.discount_enabled ?? false,
-    discount_max_percent: p.discount_max_percent ?? 0,
-    discount_steps: (Array.isArray(p.discount_steps) ? p.discount_steps : []) as Product["discount_steps"],
-    discount_label: p.discount_label ?? null,
-    product_sections: p.product_sections ?? ([] as Product["product_sections"]),
-  };
-}
-
-/** Individuales cuando no hay BD o no hay coincidencias. No comparte IDs con los packs mock. */
-export const LANDING_FALLBACK_INDIVIDUAL_PRODUCTS: Product[] = [
-  makeProduct({
-    id: "landing-fb-arena-clean-sand-plus",
-    slug: "arena-clean-sand-plus",
-    name: "Arena Clean Sand+",
-    price: 24990,
-    compare_at_price: null,
-    images: [],
-    category: "Arena para gatos",
-  }),
-  makeProduct({
-    id: "landing-fb-alfombra-atrapa-arena",
-    slug: "alfombra-atrapa-arena",
-    name: "Alfombra atrapa arena",
-    price: 14990,
-    compare_at_price: 18990,
-    images: [],
-    category: "Limpieza y accesorios",
-  }),
-  makeProduct({
-    id: "landing-fb-spray-antiolor",
-    slug: "spray-antiolor",
-    name: "Spray antiolor",
-    price: 8990,
-    compare_at_price: null,
-    images: [],
-    category: "Control de olores",
-  }),
-  makeProduct({
-    id: "landing-fb-bolsas-arenero",
-    slug: "bolsas-biodegradables-arenero",
-    name: "Bolsas para arenero",
-    price: 5990,
-    compare_at_price: null,
-    images: [],
-    category: "Limpieza y accesorios",
-  }),
-];
-
 
 export function isExcludedSnackOrPackIndividual(p: Product): boolean {
   const c = normalizeProductCategory(p.category);
@@ -182,15 +113,20 @@ export function productsToLandingBentoItems(products: Product[]): BentoItem[] {
   return products.map(productToLandingBentoItem);
 }
 
+/**
+ * Catálogo real desde Neon. Base vacía o error de conexión → lista vacía
+ * (nunca datos ficticios). Las URLs de imagen se filtran a solo hosts
+ * permitidos (R2 configurado / local) para que un registro con una URL vieja
+ * de `*.supabase.co` u otro host no soportado nunca llegue a `next/image`.
+ */
 export async function loadActiveProductsCatalog(): Promise<Product[]> {
   try {
     const rows = await listActiveProducts({ limit: 120 });
-    if (rows.length) return rows;
-  } catch {
-    /* DB no configurada */
+    return rows.map((p) => ({ ...p, images: sanitizeImageUrls(p.images) }));
+  } catch (error) {
+    console.error("[landing-home-catalog] error consultando catálogo:", error);
+    return [];
   }
-
-  return [];
 }
 
 export async function resolveLandingBentoSections(): Promise<{
@@ -199,16 +135,9 @@ export async function resolveLandingBentoSections(): Promise<{
 }> {
   const catalog = await loadActiveProductsCatalog();
 
-  const startersFromDb =
-    catalog.length > 0 ? pickIndividualStarters(catalog) : ([] as Product[]);
-
-  const individualProducts =
-    startersFromDb.length > 0
-      ? startersFromDb
-      : LANDING_FALLBACK_INDIVIDUAL_PRODUCTS.slice(0, MAX_INDIVIDUALS);
-
+  const individualProducts = pickIndividualStarters(catalog);
   const starterIds = new Set(individualProducts.map((p) => p.id));
-  const offerProducts = catalog.length > 0 ? pickOfferProducts(catalog, starterIds) : [];
+  const offerProducts = pickOfferProducts(catalog, starterIds);
 
   return {
     starterItems: productsToLandingBentoItems(individualProducts),
