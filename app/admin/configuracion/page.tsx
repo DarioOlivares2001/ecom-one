@@ -178,23 +178,15 @@ async function saveSettingsAction(formData: FormData): Promise<{ error?: string;
     ),
     enable_whatsapp_fab: readBoolean("enable_whatsapp_fab"),
   };
-  console.log("[hero-config-save] desktop url payload:", payload.hero_banner_desktop_url || "(empty)");
-  console.log("[hero-config-save] mobile url payload:", payload.hero_banner_mobile_url || "(empty)");
 
-  let savedRow;
   try {
-    savedRow = await upsertStoreSettings(payload);
+    await upsertStoreSettings(payload);
   } catch (error) {
     console.error("[admin/configuracion] Error guardando store_settings:", error);
     return {
       error: `No se pudo guardar: ${error instanceof Error ? error.message : "error desconocido"}`,
     };
   }
-  console.log("[hero-config-save] saved settings", {
-    id: savedRow.id,
-    hero_banner_desktop_url: savedRow.hero_banner_desktop_url,
-    hero_banner_mobile_url: savedRow.hero_banner_mobile_url,
-  });
 
   revalidatePath("/");
   revalidatePath("/admin");
@@ -235,7 +227,6 @@ function Field({
 
 export default async function ConfiguracionPage() {
   const settings = await getStoreSettings();
-  console.log("[hero-config-load] mobile url from store_settings:", settings.hero_banner_mobile_url || "(empty)");
 
   const identidadTab = (
     <>

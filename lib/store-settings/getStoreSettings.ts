@@ -1,5 +1,7 @@
-import { getStoreSettingsRow, upsertStoreSettings } from "@/lib/db/repositories/storeSettings";
+import { ensureStoreSettingsRowExists, getStoreSettingsRow } from "@/lib/db/repositories/storeSettings";
 import type { StoreSettings } from "@/lib/db/types";
+
+const isDev = process.env.NODE_ENV !== "production";
 
 export interface StoreSettingsView {
   store_name: string;
@@ -283,64 +285,55 @@ function normalizeSettings(row: StoreSettings | null): StoreSettingsView {
   };
 }
 
-function isUniqueViolation(error: unknown): boolean {
-  const code = (error as { code?: string } | null)?.code;
-  const message = error instanceof Error ? error.message : String(error);
-  return code === "23505" || message.toLowerCase().includes("duplicate");
-}
-
 /**
  * Crea la fila única de `store_settings` con valores neutros la primera vez
- * que se necesita (instalación nueva, tabla vacía). `uq_store_settings_singleton`
- * garantiza a nivel de BD que nunca hay más de una fila: si dos requests
- * concurrentes intentan crearla a la vez, la segunda inserción falla con
- * unique violation y simplemente se relee la fila que ya insertó la primera.
+ * que se necesita (instalación nueva, tabla vacía). Nunca sobrescribe una
+ * fila existente (ver `ensureStoreSettingsRowExists`, usa `ON CONFLICT DO
+ * NOTHING`): si ya hay una fila —con cualquier valor, incluido un guardado
+ * real del admin— el insert no hace nada y se relee tal cual está.
  */
 async function ensureStoreSettingsRow(): Promise<StoreSettings> {
-  try {
-    // Se listan explícitamente (en vez de confiar en los defaults de columna)
-    // porque varios defaults de columna todavía son los del preset de marca
-    // original (colores morado/rosado, logo_and_text, whatsapp FAB activado) —
-    // no son neutros para una instalación nueva de ecom-one.
-    return await upsertStoreSettings({
-      store_name: DEFAULT_STORE_SETTINGS.store_name,
-      store_tagline: DEFAULT_STORE_SETTINGS.store_tagline,
-      theme_preset: DEFAULT_STORE_SETTINGS.theme_preset,
-      branding_mode: DEFAULT_STORE_SETTINGS.branding_mode,
-      primary_color: DEFAULT_STORE_SETTINGS.primary_color,
-      accent_color: DEFAULT_STORE_SETTINGS.accent_color,
-      background_color: DEFAULT_STORE_SETTINGS.background_color,
-      surface_color: DEFAULT_STORE_SETTINGS.surface_color,
-      text_color: DEFAULT_STORE_SETTINGS.text_color,
-      text_muted_color: DEFAULT_STORE_SETTINGS.text_muted_color,
-      border_color: DEFAULT_STORE_SETTINGS.border_color,
-      brand_text_color: DEFAULT_STORE_SETTINGS.brand_text_color,
-      navbar_background_color: DEFAULT_STORE_SETTINGS.navbar_background_color,
-      navbar_text_color: DEFAULT_STORE_SETTINGS.navbar_text_color,
-      footer_background_color: DEFAULT_STORE_SETTINGS.footer_background_color,
-      footer_text_color: DEFAULT_STORE_SETTINGS.footer_text_color,
-      font_heading: DEFAULT_STORE_SETTINGS.font_heading,
-      font_body: DEFAULT_STORE_SETTINGS.font_body,
-      hero_overlay_mode: DEFAULT_STORE_SETTINGS.hero_overlay_mode,
-      hero_overlay_opacity: DEFAULT_STORE_SETTINGS.hero_overlay_opacity,
-      enable_whatsapp_checkout: DEFAULT_STORE_SETTINGS.enable_whatsapp_checkout,
-      enable_whatsapp_fab: DEFAULT_STORE_SETTINGS.enable_whatsapp_fab,
-      shipping_cost_clp: DEFAULT_STORE_SETTINGS.shipping_cost_clp,
-      shipping_free_threshold_clp: DEFAULT_STORE_SETTINGS.shipping_free_threshold_clp,
-      order_number_offset: DEFAULT_STORE_SETTINGS.order_number_offset,
-    });
-  } catch (error) {
-    if (!isUniqueViolation(error)) throw error;
-    const existing = await getStoreSettingsRow();
-    if (existing) return existing;
-    throw error;
-  }
+  // Se listan explícitamente (en vez de confiar en los defaults de columna)
+  // porque varios defaults de columna todavía son los del preset de marca
+  // original (colores morado/rosado, logo_and_text, whatsapp FAB activado) —
+  // no son neutros para una instalación nueva de ecom-one.
+  const { row } = await ensureStoreSettingsRowExists({
+    store_name: DEFAULT_STORE_SETTINGS.store_name,
+    store_tagline: DEFAULT_STORE_SETTINGS.store_tagline,
+    theme_preset: DEFAULT_STORE_SETTINGS.theme_preset,
+    branding_mode: DEFAULT_STORE_SETTINGS.branding_mode,
+    primary_color: DEFAULT_STORE_SETTINGS.primary_color,
+    accent_color: DEFAULT_STORE_SETTINGS.accent_color,
+    background_color: DEFAULT_STORE_SETTINGS.background_color,
+    surface_color: DEFAULT_STORE_SETTINGS.surface_color,
+    text_color: DEFAULT_STORE_SETTINGS.text_color,
+    text_muted_color: DEFAULT_STORE_SETTINGS.text_muted_color,
+    border_color: DEFAULT_STORE_SETTINGS.border_color,
+    brand_text_color: DEFAULT_STORE_SETTINGS.brand_text_color,
+    navbar_background_color: DEFAULT_STORE_SETTINGS.navbar_background_color,
+    navbar_text_color: DEFAULT_STORE_SETTINGS.navbar_text_color,
+    footer_background_color: DEFAULT_STORE_SETTINGS.footer_background_color,
+    footer_text_color: DEFAULT_STORE_SETTINGS.footer_text_color,
+    font_heading: DEFAULT_STORE_SETTINGS.font_heading,
+    font_body: DEFAULT_STORE_SETTINGS.font_body,
+    hero_overlay_mode: DEFAULT_STORE_SETTINGS.hero_overlay_mode,
+    hero_overlay_opacity: DEFAULT_STORE_SETTINGS.hero_overlay_opacity,
+    enable_whatsapp_checkout: DEFAULT_STORE_SETTINGS.enable_whatsapp_checkout,
+    enable_whatsapp_fab: DEFAULT_STORE_SETTINGS.enable_whatsapp_fab,
+    shipping_cost_clp: DEFAULT_STORE_SETTINGS.shipping_cost_clp,
+    shipping_free_threshold_clp: DEFAULT_STORE_SETTINGS.shipping_free_threshold_clp,
+    order_number_offset: DEFAULT_STORE_SETTINGS.order_number_offset,
+  });
+  return row;
 }
 
 export async function getStoreSettings(): Promise<StoreSettingsView> {
   try {
     const data = await getStoreSettingsRow();
     if (data) return normalizeSettings(data);
+    if (isDev) {
+      console.log("[store_settings] ninguna fila encontrada, creando fila neutra inicial");
+    }
     const created = await ensureStoreSettingsRow();
     return normalizeSettings(created);
   } catch (error) {

@@ -1,8 +1,22 @@
-import { desc, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";
 import { storeSettings } from "@/lib/db/schema";
 import type { StoreSettings } from "@/lib/db/types";
+
+const isDev = process.env.NODE_ENV !== "production";
+
+/**
+ * Id fijo y conocido de la única fila de configuración. Usarlo como target de
+ * `ON CONFLICT` es lo que permite que el insert-o-actualiza sea una única
+ * sentencia atómica en Postgres (un solo round-trip, sin ventana de carrera
+ * entre "verificar si existe" y "escribir"), a diferencia del patrón anterior
+ * de hacer un SELECT y luego decidir INSERT o UPDATE en el código de la app.
+ * `uq_store_settings_singleton` (índice único sobre la expresión `(true)`,
+ * ver migración 0001) sigue existiendo como segunda barrera a nivel de BD:
+ * ninguna fila con otro id podría coexistir con esta de todos modos.
+ */
+export const STORE_SETTINGS_SINGLETON_ID = "00000000-0000-0000-0000-000000000001";
 
 type StoreSettingsRow = typeof storeSettings.$inferSelect;
 
@@ -62,15 +76,21 @@ function mapStoreSettings(row: StoreSettingsRow): StoreSettings {
   };
 }
 
-/** Única fila de configuración (índice singleton en BD). null si nunca se guardó. */
+/** Única fila de configuración, identificada por su id fijo. null si nunca se creó. */
 export async function getStoreSettingsRow(): Promise<StoreSettings | null> {
   const rows = await db
     .select()
     .from(storeSettings)
-    .orderBy(desc(storeSettings.updatedAt))
+    .where(eq(storeSettings.id, STORE_SETTINGS_SINGLETON_ID))
     .limit(1);
 
   return rows[0] ? mapStoreSettings(rows[0]) : null;
+}
+
+/** Solo para diagnóstico/dev: cuenta cuántas filas existen realmente en la tabla. */
+export async function countStoreSettingsRows(): Promise<number> {
+  const rows = await db.select({ id: storeSettings.id }).from(storeSettings);
+  return rows.length;
 }
 
 export interface StoreSettingsUpsertInput {
@@ -193,29 +213,69 @@ function toDrizzleValues(input: StoreSettingsUpsertInput) {
 }
 
 /**
- * Crea o actualiza la fila única de configuración. Si no existe ninguna fila
- * todavía, inserta una nueva (equivalente a lo que hacía el admin contra
- * Supabase la primera vez que se guardaba configuración).
+ * Guardado explícito del admin (`/admin/configuracion` y las páginas de
+ * marketing): crea la fila si no existe, o **sobrescribe intencionalmente**
+ * la existente si ya hay una. Es la única función de este archivo que debe
+ * pisar valores ya guardados — se usa exclusivamente desde una acción
+ * disparada por un submit real del admin, nunca desde una lectura.
+ *
+ * Atómico: una sola sentencia `INSERT ... ON CONFLICT (id) DO UPDATE`, sin el
+ * round-trip previo de "SELECT para ver si existe, después decido INSERT o
+ * UPDATE" (que dejaba una ventana de carrera entre dos requests concurrentes).
  */
 export async function upsertStoreSettings(
   input: StoreSettingsUpsertInput
 ): Promise<StoreSettings> {
-  const existing = await db
-    .select({ id: storeSettings.id })
-    .from(storeSettings)
-    .limit(1);
-
   const values = toDrizzleValues(input);
 
-  if (existing[0]) {
-    const [row] = await db
-      .update(storeSettings)
-      .set({ ...values, updatedAt: new Date() })
-      .where(eq(storeSettings.id, existing[0].id))
-      .returning();
-    return mapStoreSettings(row);
+  const [row] = await db
+    .insert(storeSettings)
+    .values({ id: STORE_SETTINGS_SINGLETON_ID, ...values })
+    .onConflictDoUpdate({
+      target: storeSettings.id,
+      set: { ...values, updatedAt: new Date() },
+    })
+    .returning();
+
+  if (isDev) {
+    console.log(`[store_settings] guardado por admin (id=${row.id})`);
   }
 
-  const [row] = await db.insert(storeSettings).values(values).returning();
   return mapStoreSettings(row);
+}
+
+/**
+ * Crea la fila con valores neutros **solo si todavía no existe ninguna**.
+ * A diferencia de `upsertStoreSettings`, esta función NUNCA debe sobrescribir
+ * una fila existente — por eso usa `DO NOTHING` en vez de `DO UPDATE`: si el
+ * conflicto ocurre (la fila ya existía, con cualquier valor, incluidos los
+ * que el admin ya haya guardado), el INSERT simplemente no hace nada y se
+ * relee la fila tal cual está, intacta.
+ */
+export async function ensureStoreSettingsRowExists(
+  neutralDefaults: StoreSettingsUpsertInput
+): Promise<{ row: StoreSettings; created: boolean }> {
+  const values = toDrizzleValues(neutralDefaults);
+
+  const inserted = await db
+    .insert(storeSettings)
+    .values({ id: STORE_SETTINGS_SINGLETON_ID, ...values })
+    .onConflictDoNothing({ target: storeSettings.id })
+    .returning();
+
+  if (inserted[0]) {
+    if (isDev) {
+      console.log(`[store_settings] fila neutra creada por primera vez (id=${inserted[0].id})`);
+    }
+    return { row: mapStoreSettings(inserted[0]), created: true };
+  }
+
+  // Conflicto: ya existía. La leemos tal cual — nunca se toca su contenido.
+  const existing = await getStoreSettingsRow();
+  if (!existing) {
+    throw new Error(
+      "store_settings: el insert inicial no se aplicó (ya existía) pero no se pudo releer la fila."
+    );
+  }
+  return { row: existing, created: false };
 }

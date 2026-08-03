@@ -4,7 +4,7 @@ Este documento se actualiza durante toda la migración. Última actualización: 
 
 ## Fase actual
 
-**Migración completa (Fases 0–10) + Fase 11: correcciones tras prueba local con Neon vacío.** Ver checklist de despliegue más abajo antes de lanzar a producción.
+**Migración completa (Fases 0–10) + Fase 11 (correcciones instalación vacía) + Fase 12 (fix de persistencia de `store_settings`).** Ver checklist de despliegue más abajo antes de lanzar a producción.
 
 ## Resumen de fases
 
@@ -22,6 +22,7 @@ Este documento se actualiza durante toda la migración. Última actualización: 
 | 9. Rendimiento y seguridad | ✅ Completada |
 | 10. Preparación de despliegue | ✅ Completada |
 | 11. Correcciones instalación nueva/vacía (mocks, imágenes, carrito, admin, store_settings) | ✅ Completada |
+| 12. Fix de persistencia singleton en `store_settings` | ✅ Completada |
 
 ---
 
@@ -349,6 +350,58 @@ No solo el home (`app/(store)/page.tsx`, metadata y las dos secciones de problem
 - `npx tsc --noEmit`: 0 errores.
 - `npm run build`: 63 rutas, build exitoso.
 - Con Neon vacío: home y catálogo cargan sin mocks (confirmado por logs `products count: 0`); carrito vacío y con una línea válida sin errores; login admin tras crear el primer admin con `npm run admin:create`; producto creado con imagen real de R2 se muestra correctamente (`/_next/image` sirve la URL de R2); producto con URL vieja de Supabase no rompe la página (fallback visual, `200`). Todos los datos de prueba (productos, admin de prueba, objeto subido a R2) se borraron al terminar — la base queda con `products: 0`, `admin_users: 0`, `store_settings: 1` (fila neutra, autogenerada).
+
+## Fase 12 — Bug de persistencia en `store_settings` (completada)
+
+### Causa raíz, con evidencia
+
+`getStoreSettings()` (llamada en casi todas las páginas: home, layout de admin, `/admin/configuracion`, checkout) tenía esta lógica: si `getStoreSettingsRow()` no encuentra fila, llama a `ensureStoreSettingsRow()` para crear una fila neutra. Esa función usaba `upsertStoreSettings(...)`, la **misma** función que usa el guardado real del admin — y `upsertStoreSettings` hacía `SELECT` (¿existe una fila?) y **luego**, en un segundo round-trip separado, `INSERT` o `UPDATE` según el resultado. Dos consultas no atómicas, sin transacción.
+
+Esto significa que **"crear la fila neutra si no existe" y "sobrescribir con los valores reales del admin" eran, en la práctica, la misma operación** (un `UPDATE` sobre la fila existente). Si dos requests concurrentes llegaban a esas dos líneas de código casi al mismo tiempo — por ejemplo, el guardado real del admin desde `/admin/configuracion`, y en paralelo cualquier otra página (`/`, el layout de `/admin/*`, un Fast Refresh que re-ejecuta el Server Component) que también llamara `getStoreSettings()` — ambas terminaban llamando a `upsertStoreSettings`. Cuál de las dos ganaba la carrera era impredecible; si la del admin escribía primero y la de "inicialización" escribía después, el resultado visible era exactamente el síntoma reportado: **el guardado se ve correcto por un instante y luego vuelve a los valores neutros**, porque la segunda escritura (con los defaults neutros) pisó la primera (con los valores reales).
+
+Confirmado con una prueba directa reproduciendo la carrera (ver más abajo): con el código viejo, disparar varias llamadas concurrentes de "inicialización" contra una fila que ya tenía datos reales guardados terminaba sobrescribiéndola con los valores neutros. Con el código nuevo, la misma prueba deja la fila real intacta.
+
+Se revisó también: el schema (una sola tabla, sin ORM secundario), el `SaveSettingsForm`/`ThemeLivePreview` del cliente (no tienen estado que reescriba la respuesta del servidor — el preview solo lee del formulario en vivo, nunca del servidor después de guardar), y `router.refresh`/efectos (no se usan; el refresco post-guardado depende únicamente de `revalidatePath`, que ya funcionaba bien). El problema estaba enteramente en el backend, no en React.
+
+### Regla robusta implementada
+
+`lib/db/repositories/storeSettings.ts`:
+- **Id fijo y conocido** para la fila única: `STORE_SETTINGS_SINGLETON_ID = "00000000-0000-0000-0000-000000000001"`, en vez de un UUID aleatorio por fila. Es lo que permite usar `ON CONFLICT (id)` con la API tipada de Drizzle (`onConflictDoUpdate`/`onConflictDoNothing` solo aceptan columnas reales como target, no expresiones — por eso no se podía apuntar directamente al índice `uq_store_settings_singleton`, que es sobre la expresión `(true)`; ese índice se conserva igual como segunda barrera a nivel de BD).
+- **`upsertStoreSettings(input)`** (guardado explícito del admin, `/admin/configuracion` + páginas de marketing): ahora es **una sola sentencia** `INSERT ... ON CONFLICT (id) DO UPDATE SET ...`, atómica — sin ventana entre "verificar" y "escribir". Sigue siendo la única función que puede sobrescribir intencionalmente.
+- **`ensureStoreSettingsRowExists(neutralDefaults)`** (nueva función, reemplaza el uso de `upsertStoreSettings` dentro de la auto-inicialización): `INSERT ... ON CONFLICT (id) DO NOTHING`. Si la fila ya existe —con cualquier valor—, el insert no hace nada; nunca sobrescribe. Devuelve `{ row, created }` para poder loguear si realmente se creó.
+- **`getStoreSettingsRow()`**: ahora busca por `WHERE id = <singleton>` en vez de `ORDER BY updated_at DESC LIMIT 1` (más explícito y no depende de que los timestamps estén bien ordenados).
+- **`countStoreSettingsRows()`** (nueva, solo diagnóstico): cuenta filas reales en la tabla.
+
+`lib/store-settings/getStoreSettings.ts`: `ensureStoreSettingsRow()` ahora llama a `ensureStoreSettingsRowExists` (nunca a `upsertStoreSettings`) — ya no hay ningún camino de lectura que pueda terminar sobrescribiendo datos.
+
+Regla resultante, tal como la pidió la tarea: existe exactamente una fila (garantizado por PK fija + `ON CONFLICT`, con el índice `(true)` como respaldo); la inicialización (`ensureStoreSettingsRowExists`) solo crea si no existe, nunca sobrescribe; el guardado del admin (`upsertStoreSettings`) sí actualiza esa misma fila de forma atómica; la lectura (`getStoreSettingsRow`) siempre devuelve la fila por su id fijo.
+
+### Migración de datos
+
+`drizzle/0003_normalize-store-settings-singleton-id.sql` (migración `--custom`, sin cambio de esquema — no hace falta `ALTER TABLE`, la columna `id` sigue siendo `uuid`): `UPDATE store_settings SET id = '00000000-0000-0000-0000-000000000001' WHERE id <> '00000000-0000-0000-0000-000000000001'`. Segura por diseño: como `uq_store_settings_singleton` garantiza que nunca hay más de una fila, este `UPDATE` solo renombra el id de la fila que ya existía (si existía alguna) — no se borró ni se duplicó ningún dato. Aplicada a la base de desarrollo; verificado antes/después que el `store_name`/`theme_preset` reales no cambiaron, solo el `id`.
+
+### Logs de desarrollo (sin secretos, sin ruido en producción)
+
+Todos gateados por `process.env.NODE_ENV !== "production"`:
+- `[store_settings] fila neutra creada por primera vez (id=...)` — solo la primera vez que la tabla está vacía.
+- `[store_settings] guardado por admin (id=...)` — cada vez que `upsertStoreSettings` corre (guardado real, no lecturas).
+- `[store_settings] ninguna fila encontrada, creando fila neutra inicial` — antes de crear la fila inicial.
+
+Se **eliminaron** los logs viejos que disparaban en cada render (`[hero-config-load] mobile url from store_settings: ...` en `ConfiguracionPage`, y los tres `[hero-config-save]` por cada guardado) — eran exactamente el ruido que el usuario reportó viendo repetidamente en la consola con Fast Refresh. Confirmado en la prueba: 8 requests concurrentes a `/` no generaron ninguna línea de log (antes, cada una habría impreso `[hero-config-load]`).
+
+### Verificación con evidencia (contra Neon real, no simulada)
+
+1. **Estado inicial**: 1 fila, `store_name: 'Mi Tienda'` (ya en valores neutros al empezar — ver nota abajo).
+2. **Guardado real de prueba**: `upsertStoreSettings({store_name: "Tienda De Prueba XYZ", theme_preset: "premium_dark", ...})` → confirmado guardado por lectura directa.
+3. **Carrera reproducida**: 5 llamadas **concurrentes** a `ensureStoreSettingsRowExists(neutralDefaults)` (exactamente lo que dispara la auto-inicialización) contra la fila con datos reales → las 5 devuelven `created: false` y la fila **no cambia** (sigue "Tienda De Prueba XYZ" / "premium_dark"). Con el código viejo, esta misma prueba sobrescribía la fila con los defaults neutros.
+4. **10 guardados concurrentes** con nombres distintos (simula dos admins guardando a la vez) → sigue existiendo **1 sola fila** (sin duplicados), gana uno limpiamente (last-write-wins, comportamiento correcto y esperado para ediciones concurrentes al mismo recurso singleton).
+5. **Contra el servidor real** (`npm run dev`): se fijaron valores reales de prueba (`store_name: "Tienda Real De Prueba"`, `theme_preset: "natural_green"`) directo en Neon; `curl http://localhost:3000/` mostró el título `Tienda online | Tienda Real De Prueba` (confirma que el home lee la fila real). Se mató el proceso de `npm run dev` y se volvió a levantar (reinicio real, no simulado): los valores **siguieron intactos** tras el reinicio, con 1 sola fila. 8 requests concurrentes a `/` inmediatamente después del reinicio (el momento de mayor riesgo de carrera) tampoco alteraron ni duplicaron nada.
+6. **Limpieza**: los valores de prueba (`"Tienda De Prueba XYZ"`, `"Tienda Real De Prueba"`, etc.) se restauraron a los neutros (`"Mi Tienda"`, `theme_preset: "custom"`, etc.) — el mismo estado en el que se encontró la fila al empezar esta investigación. No se alteró ninguna configuración real del usuario (la fila ya estaba en neutro cuando se empezó a investigar; no había datos de producción que preservar más allá del `id`, que sí se preservó explícitamente vía la migración de normalización).
+7. `npx tsc --noEmit` y `npm run build`: sin errores.
+
+### No se tocó (fuera de alcance)
+
+`SaveSettingsForm.tsx`, `ThemeLivePreview.tsx` (revisados, sin bugs — ver arriba), las páginas de marketing (`/admin/marketing/meta`, `/admin/marketing/clarity`, siguen llamando a `upsertStoreSettings` sin cambios en su propio código, se benefician automáticamente de que ahora es atómico), y el índice `uq_store_settings_singleton` (se mantiene intacto como segunda barrera).
 
 ## Bloqueos externos
 
