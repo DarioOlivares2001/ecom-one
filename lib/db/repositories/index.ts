@@ -1,3 +1,5 @@
+import "server-only";
+
 export * from "./products";
 export * from "./productVariants";
 export * from "./orders";

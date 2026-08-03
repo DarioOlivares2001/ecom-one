@@ -4,7 +4,7 @@ import { CuentaLinkButton } from "@/components/cuenta/CuentaLinkButton";
 import { getClienteByEmail } from "@/lib/db/repositories/clientes";
 import { formatPrice } from "@/lib/utils/format";
 import { getCuentaSessionFromCookies } from "@/lib/cuenta/session";
-import { normalizeClienteEmail } from "@/lib/clientes/upsertClienteFromOrder";
+import { normalizeClienteEmail } from "@/lib/clientes/normalizeClienteEmail";
 import { recoverClienteFromOrderHistory } from "@/lib/clientes/recoverFromOrderHistory";
 import { getStoreSettings } from "@/lib/store-settings/getStoreSettings";
 import { ProfileRecoveryBanner } from "@/components/cuenta/ProfileRecoveryBanner";

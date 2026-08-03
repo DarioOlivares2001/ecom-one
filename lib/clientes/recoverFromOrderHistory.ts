@@ -1,4 +1,4 @@
-import { normalizeClienteEmail } from "@/lib/clientes/upsertClienteFromOrder";
+import { normalizeClienteEmail } from "@/lib/clientes/normalizeClienteEmail";
 import { listOrdersByEmailCaseInsensitive } from "@/lib/db/repositories/orders";
 import { getClienteById, updateCliente } from "@/lib/db/repositories/clientes";
 import {

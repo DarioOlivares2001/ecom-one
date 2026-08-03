@@ -5,7 +5,7 @@ import Link from "next/link";
 import { z } from "zod";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { normalizeClienteEmail } from "@/lib/clientes/upsertClienteFromOrder";
+import { normalizeClienteEmail } from "@/lib/clientes/normalizeClienteEmail";
 
 const schema = z.object({
   email: z.string().email("Email inválido"),

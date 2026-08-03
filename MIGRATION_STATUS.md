@@ -4,7 +4,7 @@ Este documento se actualiza durante toda la migración. Última actualización: 
 
 ## Fase actual
 
-**Migración completa (Fases 0–10) + Fase 11 (correcciones instalación vacía) + Fase 12 (fix de persistencia de `store_settings`).** Ver checklist de despliegue más abajo antes de lanzar a producción.
+**Migración completa (Fases 0–10) + Fase 11 (correcciones instalación vacía) + Fase 12 (fix de persistencia de `store_settings`) + Fase 13 (aislar `lib/db` del bundle de cliente en `/cuenta/*`).** Ver checklist de despliegue más abajo antes de lanzar a producción.
 
 ## Resumen de fases
 
@@ -23,6 +23,7 @@ Este documento se actualiza durante toda la migración. Última actualización: 
 | 10. Preparación de despliegue | ✅ Completada |
 | 11. Correcciones instalación nueva/vacía (mocks, imágenes, carrito, admin, store_settings) | ✅ Completada |
 | 12. Fix de persistencia singleton en `store_settings` | ✅ Completada |
+| 13. Aislar `lib/db`/Drizzle del bundle de cliente en `/cuenta/*` | ✅ Completada |
 
 ---
 
@@ -402,6 +403,41 @@ Se **eliminaron** los logs viejos que disparaban en cada render (`[hero-config-l
 ### No se tocó (fuera de alcance)
 
 `SaveSettingsForm.tsx`, `ThemeLivePreview.tsx` (revisados, sin bugs — ver arriba), las páginas de marketing (`/admin/marketing/meta`, `/admin/marketing/clarity`, siguen llamando a `upsertStoreSettings` sin cambios en su propio código, se benefician automáticamente de que ahora es atómico), y el índice `uq_store_settings_singleton` (se mantiene intacto como segunda barrera).
+
+## Fase 13 — `DATABASE_URL` filtrándose al bundle de cliente en `/cuenta/*` (completada)
+
+### Causa raíz, con evidencia
+
+Se agregó `import "server-only"` a `lib/db/client.ts` (paquete `server-only` instalado como dependencia nueva) y se corrió `npm run build`: esto hace que Next falle el build señalando la cadena exacta de imports si algún módulo del bundle de cliente llega a `lib/db/client.ts`, en vez de tener que rastrearlo a mano. El build falló apuntando a:
+
+```
+./lib/db/client.ts
+./lib/db/repositories/products.ts
+./lib/db/repositories/index.ts
+./lib/clientes/upsertClienteFromOrder.ts
+./app/(store)/cuenta/crear/page.tsx   ("use client")
+```
+
+`lib/clientes/upsertClienteFromOrder.ts` mezclaba en un solo archivo una función pura sin dependencias (`normalizeClienteEmail`, trim + lowercase de un email) con la lógica real de escritura a `clientes` vía Drizzle (que importa `lib/db/repositories` → `lib/db/client.ts` → `DATABASE_URL`). Cualquier componente `"use client"` que solo necesitaba `normalizeClienteEmail` para normalizar un email antes de un `fetch` terminaba arrastrando al bundle del navegador **todo el módulo**, incluida la conexión a Neon — de ahí el error `Falta DATABASE_URL en .env.local` en el navegador (el navegador nunca tiene esa variable, ni debe tenerla).
+
+Se encontraron **5 componentes cliente** con este patrón: `app/(store)/cuenta/login/LoginForm.tsx`, `app/(store)/cuenta/registro/page.tsx`, `app/(store)/cuenta/recuperar/RecuperarForm.tsx`, `app/(store)/cuenta/reset/ResetPasswordForm.tsx`, `app/(store)/cuenta/crear/page.tsx` — todos importaban `normalizeClienteEmail` desde `@/lib/clientes/upsertClienteFromOrder`. Todos ya llamaban correctamente a un endpoint de servidor (`fetch("/api/cuenta/...")`) para la autenticación real — el único problema era este import compartido, no la separación cliente/servidor de la lógica de negocio en sí.
+
+### Corrección
+
+- **Nuevo `lib/clientes/normalizeClienteEmail.ts`**: la función pura, sola, sin ningún import — segura para cliente y servidor.
+- `lib/clientes/upsertClienteFromOrder.ts` (que sí toca Drizzle) ahora importa `normalizeClienteEmail` desde ese archivo nuevo, en vez de definirla y re-exportarla — ya no exporta la función (re-exportarla no habría arreglado nada: importar cualquier símbolo de un módulo ES hace que webpack evalúe el módulo completo igual).
+- Los **17 archivos** que usaban `normalizeClienteEmail` (5 componentes cliente + 11 rutas API + `lib/clientes/recoverFromOrderHistory.ts`) se actualizaron para importarla desde `@/lib/clientes/normalizeClienteEmail` directamente — incluidos los servidor, para que ningún importador quede apuntando al archivo "mixto" nunca más.
+- `import "server-only"` agregado a `lib/db/client.ts` y a los 8 archivos de `lib/db/repositories/*.ts` (+ el barrel `index.ts`) y a `lib/db/transactions/confirmPaidOrder.ts` — cualquier intento futuro de importar la capa de datos desde un componente cliente ahora falla el build de inmediato con un mensaje claro, en vez de fallar en runtime en el navegador del usuario.
+- Revisado explícitamente: `/cuenta/direcciones` (`DireccionesClient.tsx`) — no tenía este problema (nunca importó nada de `lib/clientes/*` ni `lib/db/*`). El ícono/link de cuenta en `Navbar.tsx` solo arma un string de URL (`/cuenta/login?redirect=...`), no importa nada del servidor.
+
+### Verificación con evidencia
+
+- `npm run build` con `server-only` activo: **falló primero** apuntando exactamente a la cadena de arriba (confirma la causa raíz); tras el fix, **compiló limpio**, y ningún otro módulo disparó la misma advertencia (confirma que no quedan más cadenas rotas en el resto de la app).
+- Tamaños de bundle de las páginas de cuenta bajaron de forma consistente con haber dejado de arrastrar Drizzle/Neon al cliente (ej. `/cuenta/login` y `/cuenta/recuperar` ya no intentan empaquetar la capa de datos).
+- Contra Neon real, con el servidor corriendo: `/cuenta/login?redirect=%2Fproductos` → `200` (antes crasheaba con "Falta DATABASE_URL en .env.local"). Login con cuenta inexistente → `401` con mensaje claro. Registro de una cuenta de prueba (`cliente-prueba@ecom-one.test`) → `200 ok:true`. Login con esa cuenta y contraseña correcta → `200 ok:true`; con contraseña incorrecta → `401`. `/cuenta/registro`, `/cuenta/recuperar`, `/cuenta/reset`, `/cuenta/crear` → `200`; `/cuenta`, `/cuenta/datos`, `/cuenta/direcciones` (requieren sesión) → `307` (redirect a login, comportamiento esperado sin cookie). Cuenta de prueba borrada al terminar.
+- `npx tsc --noEmit` y `npm run build`: sin errores.
+
+No se tocó `DATABASE_URL`, `.env.local`, ningún secreto, Supabase, ni la configuración de Neon — el fix fue enteramente de organización de imports (cuál código corre en el navegador vs. en el servidor).
 
 ## Bloqueos externos
 

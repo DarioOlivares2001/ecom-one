@@ -6,7 +6,7 @@ import {
   listDireccionesByClienteId,
   updateDireccion,
 } from "@/lib/db/repositories/clienteDirecciones";
-import { normalizeClienteEmail } from "@/lib/clientes/upsertClienteFromOrder";
+import { normalizeClienteEmail } from "@/lib/clientes/normalizeClienteEmail";
 import { getCuentaSessionFromCookies } from "@/lib/cuenta/session";
 
 export const runtime = "nodejs";

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getClienteByEmail } from "@/lib/db/repositories/clientes";
 import { createDireccion, listDireccionesByClienteId } from "@/lib/db/repositories/clienteDirecciones";
-import { normalizeClienteEmail } from "@/lib/clientes/upsertClienteFromOrder";
+import { normalizeClienteEmail } from "@/lib/clientes/normalizeClienteEmail";
 import { getCuentaSessionFromCookies } from "@/lib/cuenta/session";
 
 export const runtime = "nodejs";

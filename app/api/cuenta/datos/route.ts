@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getClienteByEmail, updateCliente } from "@/lib/db/repositories/clientes";
-import { normalizeClienteEmail } from "@/lib/clientes/upsertClienteFromOrder";
+import { normalizeClienteEmail } from "@/lib/clientes/normalizeClienteEmail";
 import {
   validateNombreCliente,
   validateTelefonoChileno,

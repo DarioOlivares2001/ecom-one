@@ -3,7 +3,7 @@ import { hashSync } from "bcryptjs";
 import { z } from "zod";
 import { createCliente, getClienteByEmail, updateCliente } from "@/lib/db/repositories/clientes";
 import { getOrderByOrderNumber } from "@/lib/db/repositories/orders";
-import { normalizeClienteEmail } from "@/lib/clientes/upsertClienteFromOrder";
+import { normalizeClienteEmail } from "@/lib/clientes/normalizeClienteEmail";
 import { recoverClienteFromOrderHistory } from "@/lib/clientes/recoverFromOrderHistory";
 import { sendWelcomeEmail } from "@/lib/email/sendWelcomeEmail";
 import { getStoreSettings } from "@/lib/store-settings/getStoreSettings";

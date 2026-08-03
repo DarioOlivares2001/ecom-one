@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getClienteByEmail } from "@/lib/db/repositories/clientes";
-import { normalizeClienteEmail } from "@/lib/clientes/upsertClienteFromOrder";
+import { normalizeClienteEmail } from "@/lib/clientes/normalizeClienteEmail";
 import { getCuentaSessionFromCookies } from "@/lib/cuenta/session";
 import { DatosForm, type DatosIniciales } from "./DatosForm";
 

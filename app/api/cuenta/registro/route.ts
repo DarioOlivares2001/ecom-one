@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { hashSync } from "bcryptjs";
 import { z } from "zod";
 import { createCliente, getClienteByEmail, updateCliente } from "@/lib/db/repositories/clientes";
-import { normalizeClienteEmail } from "@/lib/clientes/upsertClienteFromOrder";
+import { normalizeClienteEmail } from "@/lib/clientes/normalizeClienteEmail";
 import { recoverClienteFromOrderHistory } from "@/lib/clientes/recoverFromOrderHistory";
 import { getStoreSettings } from "@/lib/store-settings/getStoreSettings";
 

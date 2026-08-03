@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getClienteByEmail, updateCliente } from "@/lib/db/repositories/clientes";
-import { normalizeClienteEmail } from "@/lib/clientes/upsertClienteFromOrder";
+import { normalizeClienteEmail } from "@/lib/clientes/normalizeClienteEmail";
 import { getStoreSettings } from "@/lib/store-settings/getStoreSettings";
 import { sendResetPasswordEmail } from "@/lib/email/sendResetPasswordEmail";
 import { getPublicSiteUrl } from "@/lib/site-url";

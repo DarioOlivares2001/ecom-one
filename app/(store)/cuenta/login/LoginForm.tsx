@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { CuentaPasswordToggleSuffix } from "@/components/cuenta/CuentaPasswordToggleSuffix";
 import { toast } from "@/components/ui/Toast";
-import { normalizeClienteEmail } from "@/lib/clientes/upsertClienteFromOrder";
+import { normalizeClienteEmail } from "@/lib/clientes/normalizeClienteEmail";
 import { dispatchClienteSessionChanged } from "@/lib/cuenta/session-events";
 import { getSafePostLoginRedirect } from "@/lib/cuenta/safeRedirect";
 

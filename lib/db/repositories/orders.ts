@@ -1,3 +1,4 @@
+import "server-only";
 import { and, count, desc, eq, gte, inArray, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";

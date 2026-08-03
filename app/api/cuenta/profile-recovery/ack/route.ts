@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getClienteByEmail, updateCliente } from "@/lib/db/repositories/clientes";
-import { normalizeClienteEmail } from "@/lib/clientes/upsertClienteFromOrder";
+import { normalizeClienteEmail } from "@/lib/clientes/normalizeClienteEmail";
 import { getCuentaSessionFromCookies } from "@/lib/cuenta/session";
 
 export const runtime = "nodejs";

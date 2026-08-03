@@ -1,9 +1,5 @@
 import { createCliente, getClienteByEmail, updateCliente } from "@/lib/db/repositories";
-
-/** Email como clave de cliente: trim + minúsculas (único en `public.clientes`). */
-export function normalizeClienteEmail(email: string): string {
-  return String(email).trim().toLowerCase();
-}
+import { normalizeClienteEmail } from "@/lib/clientes/normalizeClienteEmail";
 
 export type ClienteCheckoutPayload = {
   name: string;
