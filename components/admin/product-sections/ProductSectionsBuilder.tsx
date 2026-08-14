@@ -16,6 +16,7 @@ import type {
   ProductSectionList,
   ProductSectionType,
   TestimonialsData,
+  VisualSequenceData,
 } from "@/lib/product/sections/types";
 
 import { AddSectionMenu } from "./AddSectionMenu";
@@ -24,6 +25,7 @@ import { BenefitsEditor } from "./editors/BenefitsEditor";
 import { FaqEditor } from "./editors/FaqEditor";
 import { MediaStripEditor } from "./editors/MediaStripEditor";
 import { TestimonialsEditor } from "./editors/TestimonialsEditor";
+import { VisualSequenceEditor } from "./editors/VisualSequenceEditor";
 import { SectionCard } from "./SectionCard";
 
 interface ProductSectionsBuilderProps {
@@ -187,6 +189,14 @@ export function ProductSectionsBuilder({
                   <BeforeAfterEditor
                     data={section.data}
                     onChange={(next: BeforeAfterData) =>
+                      handleUpdateData(section.id, next)
+                    }
+                  />
+                )}
+                {section.type === "visual_sequence" && (
+                  <VisualSequenceEditor
+                    data={section.data}
+                    onChange={(next: VisualSequenceData) =>
                       handleUpdateData(section.id, next)
                     }
                   />

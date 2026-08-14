@@ -95,10 +95,10 @@ const COMMUNES_BY_REGION: Record<string, readonly string[]> = {
 };
 
 /**
- * Cobertura fija de esta versión de PonkyBonk (tienda local, solo O'Higgins).
- * Para clonar a otro nicho a nivel nacional: volver a mostrar el <FormSelect>
- * de región (recorriendo CHILE_REGIONS, que se deja sin uso pero intacto más
- * abajo) y cambiar el estado inicial del form de `region: FIXED_REGION` a
+ * Cobertura fija de esta tienda (despacho local, solo O'Higgins). Para
+ * habilitar cobertura nacional: volver a mostrar el <FormSelect> de región
+ * (recorriendo CHILE_REGIONS, que se deja sin uso pero intacto más abajo)
+ * y cambiar el estado inicial del form de `region: FIXED_REGION` a
  * `region: ""`.
  */
 const FIXED_REGION = "Libertador General Bernardo O'Higgins" as const;

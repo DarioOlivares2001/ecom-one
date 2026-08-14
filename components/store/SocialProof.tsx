@@ -2,17 +2,17 @@ const TESTIMONIALS = [
   {
     name: "Camila Rojas",
     city: "Santiago",
-    comment: "Notamos menos olor desde la primera bolsa. Casa con dos gatos y mucho más fresca.",
+    comment: "Llegó rápido y el producto es tal cual se veía en la ficha. Muy buena experiencia.",
   },
   {
     name: "Matías Fuentes",
     city: "Valparaíso",
-    comment: "Menos arena fuera del arenero y la combinación con alfombra atrapa arena vale la pena.",
+    comment: "Buena calidad y precio justo. El checkout fue simple y sin sorpresas.",
   },
   {
     name: "Valentina Mora",
-    city: "Rancagua",
-    comment: "Pedido rápido en Rancagua y productos que sí cumplen para el día a día.",
+    city: "Concepción",
+    comment: "Atención rápida por WhatsApp cuando tuve una duda antes de comprar.",
   },
 ];
 
@@ -33,7 +33,7 @@ export function SocialProof() {
     <section className="bg-zinc-50">
       <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
         <h2 className="font-display text-2xl font-bold tracking-tight text-[var(--color-text)] sm:text-3xl text-center mb-10">
-          Más de 500 clientes en Rancagua ya cambiaron su arena
+          Lo que dicen quienes ya compraron
         </h2>
         <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
           {TESTIMONIALS.map(({ name, city, comment }) => (

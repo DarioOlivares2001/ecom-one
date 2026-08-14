@@ -1,26 +1,71 @@
 "use client";
 
-import {
-  BEFORE_AFTER_LAYOUTS,
-  type BeforeAfterData,
-  type BeforeAfterLayout,
-} from "@/lib/product/sections/types";
+import { useState } from "react";
 
-import { inputCls, labelCls, textareaCls } from "../shared";
+import type { BeforeAfterData } from "@/lib/product/sections/types";
+
+import { inputCls, labelCls, uploadProductSectionImage } from "../shared";
 
 interface BeforeAfterEditorProps {
   data: BeforeAfterData;
   onChange: (next: BeforeAfterData) => void;
 }
 
-const LAYOUT_LABEL: Record<BeforeAfterLayout, string> = {
-  side_by_side: "Lado a lado (2 columnas en desktop)",
-  stacked: "Apilado (uno sobre otro)",
-};
+interface ImageUploadSlotProps {
+  label: string;
+  imageUrl: string;
+  onUploaded: (url: string) => void;
+}
 
-function urlLooksValid(url: string | undefined): boolean {
-  if (!url || !url.trim()) return true;
-  return /^https?:\/\//i.test(url.trim());
+function ImageUploadSlot({ label, imageUrl, onUploaded }: ImageUploadSlotProps) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const url = await uploadProductSectionImage(file);
+      onUploaded(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al subir la imagen.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className={labelCls}>{label}</label>
+      <div className="flex items-center gap-3">
+        <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md border border-zinc-200 bg-[repeating-conic-gradient(#e5e7eb_0%_25%,white_0%_50%)] bg-[length:12px_12px]">
+          {imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={imageUrl} alt={`Vista previa ${label}`} className="h-full w-full object-cover" />
+          ) : (
+            <span className="text-[9px] text-zinc-400">Sin imagen</span>
+          )}
+        </div>
+        <label className="flex cursor-pointer flex-col gap-1">
+          <span className="text-xs font-medium text-zinc-600">
+            {imageUrl ? "Cambiar imagen" : "Subir imagen"}
+          </span>
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            className="text-xs file:mr-2 file:rounded file:border-0 file:bg-zinc-900 file:px-3 file:py-1.5 file:text-white"
+            disabled={busy}
+            onChange={(ev) => void onFile(ev)}
+          />
+        </label>
+      </div>
+      {busy && <p className="text-xs text-zinc-500">Subiendo…</p>}
+      {error && <p className="text-xs text-rose-600">{error}</p>}
+    </div>
+  );
 }
 
 export function BeforeAfterEditor({ data, onChange }: BeforeAfterEditorProps) {
@@ -28,180 +73,60 @@ export function BeforeAfterEditor({ data, onChange }: BeforeAfterEditorProps) {
     onChange({ ...data, ...next });
   }
 
-  const beforeUrlInvalid = !urlLooksValid(data.before_image_url);
-  const afterUrlInvalid = !urlLooksValid(data.after_image_url);
-
   return (
     <div className="flex flex-col gap-5">
-      {/* Header común */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_220px]">
-        <div className="flex flex-col gap-1.5">
-          <label className={labelCls}>Título de la sección (opcional)</label>
-          <input
-            className={inputCls}
-            value={data.heading ?? ""}
-            onChange={(e) => patch({ heading: e.target.value })}
-            placeholder='Ej: "Antes y después"'
-            maxLength={80}
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <label className={labelCls}>Distribución</label>
-          <select
-            className={inputCls}
-            value={data.layout ?? "side_by_side"}
-            onChange={(e) =>
-              patch({ layout: e.target.value as BeforeAfterLayout })
-            }
-          >
-            {BEFORE_AFTER_LAYOUTS.map((l) => (
-              <option key={l} value={l}>
-                {LAYOUT_LABEL[l]}
-              </option>
-            ))}
-          </select>
-        </div>
+      <div className="flex flex-col gap-1.5">
+        <label className={labelCls}>Título de la sección (opcional)</label>
+        <input
+          className={inputCls}
+          value={data.heading ?? ""}
+          onChange={(e) => patch({ heading: e.target.value })}
+          placeholder='Ej: "Antes y después"'
+          maxLength={80}
+        />
       </div>
 
-      {/* Dos columnas: ANTES / DESPUÉS */}
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        {/* ── ANTES ── */}
-        <div className="flex flex-col gap-2.5 rounded-lg border border-rose-200 bg-rose-50/40 p-3">
-          <div className="flex items-center gap-2">
-            <span className="inline-flex h-5 items-center rounded-full bg-rose-100 px-2 text-[10px] font-extrabold uppercase tracking-wider text-rose-700">
-              Antes
-            </span>
-            <span className="text-[11px] text-rose-700/80">
-              Mostrar el problema
-            </span>
-          </div>
-
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="flex flex-col gap-3 rounded-lg border border-rose-200 bg-rose-50/40 p-3">
+          <ImageUploadSlot
+            label='Imagen "Antes"'
+            imageUrl={data.before_image_url ?? ""}
+            onUploaded={(url) => patch({ before_image_url: url })}
+          />
           <div className="flex flex-col gap-1.5">
-            <label className={labelCls}>Título</label>
+            <label className={labelCls}>Etiqueta (opcional)</label>
             <input
               className={inputCls}
               value={data.before_title ?? ""}
               onChange={(e) => patch({ before_title: e.target.value })}
-              placeholder='Ej: "Antes" / "Sin el producto"'
+              placeholder="Antes"
               maxLength={80}
             />
           </div>
-
-          <div className="flex flex-col gap-1.5">
-            <label className={labelCls}>Descripción</label>
-            <textarea
-              className={textareaCls}
-              value={data.before_description ?? ""}
-              rows={5}
-              maxLength={600}
-              onChange={(e) => patch({ before_description: e.target.value })}
-              placeholder={"Una línea por fila.\n❌ Malos olores\n❌ Arena en el piso"}
-            />
-            <p className="text-[11px] text-zinc-500">
-              Tip: usa una línea por punto. Se respetan los saltos de línea.
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <label className={labelCls}>URL imagen (opcional)</label>
-            <input
-              className={inputCls}
-              value={data.before_image_url ?? ""}
-              onChange={(e) => patch({ before_image_url: e.target.value })}
-              placeholder="https://..."
-              inputMode="url"
-            />
-            {beforeUrlInvalid && (
-              <p className="text-xs text-rose-600">
-                La URL debe empezar con http:// o https://.
-              </p>
-            )}
-            {data.before_image_url?.trim() && !beforeUrlInvalid && (
-              <div className="mt-1 overflow-hidden rounded-md border border-rose-200 bg-white">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={data.before_image_url.trim()}
-                  alt="Preview antes"
-                  className="block w-full"
-                  style={{ maxHeight: 180, objectFit: "cover" }}
-                  loading="lazy"
-                  decoding="async"
-                />
-              </div>
-            )}
-          </div>
         </div>
 
-        {/* ── DESPUÉS ── */}
-        <div className="flex flex-col gap-2.5 rounded-lg border border-emerald-200 bg-emerald-50/40 p-3">
-          <div className="flex items-center gap-2">
-            <span className="inline-flex h-5 items-center rounded-full bg-emerald-100 px-2 text-[10px] font-extrabold uppercase tracking-wider text-emerald-700">
-              Después
-            </span>
-            <span className="text-[11px] text-emerald-700/80">
-              Mostrar el resultado
-            </span>
-          </div>
-
+        <div className="flex flex-col gap-3 rounded-lg border border-emerald-200 bg-emerald-50/40 p-3">
+          <ImageUploadSlot
+            label='Imagen "Después"'
+            imageUrl={data.after_image_url ?? ""}
+            onUploaded={(url) => patch({ after_image_url: url })}
+          />
           <div className="flex flex-col gap-1.5">
-            <label className={labelCls}>Título</label>
+            <label className={labelCls}>Etiqueta (opcional)</label>
             <input
               className={inputCls}
               value={data.after_title ?? ""}
               onChange={(e) => patch({ after_title: e.target.value })}
-              placeholder='Ej: "Después" / "Con el producto"'
+              placeholder="Después"
               maxLength={80}
             />
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <label className={labelCls}>Descripción</label>
-            <textarea
-              className={textareaCls}
-              value={data.after_description ?? ""}
-              rows={5}
-              maxLength={600}
-              onChange={(e) => patch({ after_description: e.target.value })}
-              placeholder={"Una línea por fila.\n✅ Ambiente limpio\n✅ Menos suciedad"}
-            />
-            <p className="text-[11px] text-zinc-500">
-              Tip: usa una línea por punto. Se respetan los saltos de línea.
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <label className={labelCls}>URL imagen (opcional)</label>
-            <input
-              className={inputCls}
-              value={data.after_image_url ?? ""}
-              onChange={(e) => patch({ after_image_url: e.target.value })}
-              placeholder="https://..."
-              inputMode="url"
-            />
-            {afterUrlInvalid && (
-              <p className="text-xs text-rose-600">
-                La URL debe empezar con http:// o https://.
-              </p>
-            )}
-            {data.after_image_url?.trim() && !afterUrlInvalid && (
-              <div className="mt-1 overflow-hidden rounded-md border border-emerald-200 bg-white">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={data.after_image_url.trim()}
-                  alt="Preview después"
-                  className="block w-full"
-                  style={{ maxHeight: 180, objectFit: "cover" }}
-                  loading="lazy"
-                  decoding="async"
-                />
-              </div>
-            )}
           </div>
         </div>
       </div>
 
       <p className="text-[11px] text-zinc-500">
-        Si dejas ambas columnas vacías, el bloque no se mostrará en la ficha.
+        Sube ambas imágenes para activar el comparador en la ficha. Usa fotos reales y autorizadas
+        del producto — no sugieras resultados garantizados.
       </p>
     </div>
   );

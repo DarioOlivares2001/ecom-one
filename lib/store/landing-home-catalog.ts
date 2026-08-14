@@ -1,84 +1,18 @@
 import type { BentoItem } from "@/components/store/BentoGrid";
 import type { Product } from "@/lib/db/types";
 import { listActiveProducts } from "@/lib/db/repositories";
-import { normalizeProductCategory } from "@/lib/product/categories";
+import { normalizeProductCategory, sortCategoriesForStore } from "@/lib/product/categories";
 import { sanitizeImageUrls } from "@/lib/images/isAllowedImageSrc";
 
-const MAX_INDIVIDUALS = 4;
+const MAX_FEATURED = 4;
 const MAX_OFFERS = 6;
 
-export function isExcludedSnackOrPackIndividual(p: Product): boolean {
-  const c = normalizeProductCategory(p.category);
-  if (c === "Packs ahorro" || c === "Snacks y premios") return true;
-  const nameTrim = p.name.trim();
-  if (/^pack[\s_-]/i.test(nameTrim) || /\bpack\s+(control|ahorro|limpieza|combo)/i.test(p.name))
-    return true;
-  return false;
-}
-
-function matchesCleanSandPlus(p: Product): boolean {
-  const s = `${p.slug} ${p.name}`.toLowerCase();
-  return (
-    /clean\s*sand|clean\+|sand\+|sand\s*plus/i.test(s) ||
-    (/arena\s*clean/i.test(s) && !/alfombra|spray|pack/i.test(s))
-  );
-}
-
-function matchesAlfombraAtrapaArena(p: Product): boolean {
-  const s = `${p.slug} ${p.name}`.toLowerCase();
-  return /alfombra|atrapa[\s_-]*arena/.test(s);
-}
-
-function matchesSprayAntiolor(p: Product): boolean {
-  const s = `${p.slug} ${p.name}`.toLowerCase();
-  return /spray|anti\s*olor|antiolor/.test(s);
-}
-
-/** Hasta {MAX_INDIVIDUALS} SKUs individuales: arena principal, alfombra, spray, refuerzos de categorías permitidas. */
-export function pickIndividualStarters(products: Product[]): Product[] {
-  const pool = products.filter((p) => !isExcludedSnackOrPackIndividual(p));
-  const picked: Product[] = [];
-  const ids = new Set<string>();
-
-  function take(predicate: (p: Product) => boolean) {
-    for (const p of pool) {
-      if (picked.length >= MAX_INDIVIDUALS) return;
-      if (ids.has(p.id)) continue;
-      if (!predicate(p)) continue;
-      picked.push(p);
-      ids.add(p.id);
-    }
-  }
-
-  take(matchesCleanSandPlus);
-  take(matchesAlfombraAtrapaArena);
-  take(matchesSprayAntiolor);
-
-  if (picked.length < MAX_INDIVIDUALS) {
-    const preferredCategories = new Set([
-      "Arena para gatos",
-      "Control de olores",
-      "Limpieza y accesorios",
-      "Areneros",
-    ]);
-    const extras = pool.filter((p) => !ids.has(p.id) && preferredCategories.has(normalizeProductCategory(p.category)));
-    for (const p of extras) {
-      if (picked.length >= MAX_INDIVIDUALS) break;
-      picked.push(p);
-      ids.add(p.id);
-    }
-  }
-
-  if (picked.length < MAX_INDIVIDUALS) {
-    for (const p of pool) {
-      if (picked.length >= MAX_INDIVIDUALS) break;
-      if (ids.has(p.id)) continue;
-      picked.push(p);
-      ids.add(p.id);
-    }
-  }
-
-  return picked.slice(0, MAX_INDIVIDUALS);
+/** Hasta {MAX_FEATURED} productos activos con imagen, más recientes primero. */
+export function pickFeaturedProducts(products: Product[]): Product[] {
+  return products
+    .filter((p) => !!p.images?.[0])
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, MAX_FEATURED);
 }
 
 export function pickOfferProducts(products: Product[], excludeIds: Set<string>): Product[] {
@@ -129,18 +63,29 @@ export async function loadActiveProductsCatalog(): Promise<Product[]> {
   }
 }
 
+/** Categorías reales del catálogo activo, sin lista fija en código. */
+export function pickStoreCategories(products: Product[]): string[] {
+  const unique = Array.from(
+    new Set(products.map((p) => normalizeProductCategory(p.category)).filter(Boolean))
+  );
+  return sortCategoriesForStore(unique);
+}
+
 export async function resolveLandingBentoSections(): Promise<{
   starterItems: BentoItem[];
   offerProducts: Product[];
+  categories: string[];
 }> {
   const catalog = await loadActiveProductsCatalog();
 
-  const individualProducts = pickIndividualStarters(catalog);
-  const starterIds = new Set(individualProducts.map((p) => p.id));
+  const featuredProducts = pickFeaturedProducts(catalog);
+  const starterIds = new Set(featuredProducts.map((p) => p.id));
   const offerProducts = pickOfferProducts(catalog, starterIds);
+  const categories = pickStoreCategories(catalog);
 
   return {
-    starterItems: productsToLandingBentoItems(individualProducts),
+    starterItems: productsToLandingBentoItems(featuredProducts),
     offerProducts,
+    categories,
   };
 }

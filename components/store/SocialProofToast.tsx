@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 
-const CITIES = ["Santiago", "Rancagua", "Talca", "Concepción", "Valparaíso"];
+const CITIES = ["Santiago", "Valparaíso", "Concepción", "La Serena", "Temuco"];
 const TIMES = ["hace 1 minuto", "hace 5 minutos", "hace 10 minutos", "hace 2 minutos"];
 
 type Props = {

@@ -3,13 +3,6 @@ import type { StoreSettingsView } from "@/lib/store-settings/getStoreSettings";
 import { canvasColorsChanged, sanitizeReadableCanvasColors } from "@/lib/store-settings/sanitizeReadableTheme";
 import { resolveFontCssVar } from "@/lib/fonts/registry";
 
-type ThemePreset =
-  | "minimal_black"
-  | "pets_purple_pink"
-  | "premium_dark"
-  | "natural_green"
-  | "pastel";
-
 type ThemePalette = {
   primary: string;
   accent: string;
@@ -19,17 +12,13 @@ type ThemePalette = {
   border: string;
 };
 
+/**
+ * Preset "deep_violet" es también el fallback para `preset` vacío, `"custom"`
+ * (cuando no aplica override manual) o cualquier valor legado desconocido —
+ * queda como la identidad neutra por defecto de una instalación nueva.
+ */
 export function getPresetThemePalette(preset: string): ThemePalette {
-  const safePreset: ThemePreset =
-    preset === "minimal_black" ||
-    preset === "pets_purple_pink" ||
-    preset === "premium_dark" ||
-    preset === "natural_green" ||
-    preset === "pastel"
-      ? preset
-      : "pets_purple_pink";
-
-  switch (safePreset) {
+  switch (preset) {
     case "minimal_black":
       return {
         primary: "#111111",
@@ -66,14 +55,14 @@ export function getPresetThemePalette(preset: string): ThemePalette {
         text: "#334155",
         border: "#F1DDF0",
       };
-    case "pets_purple_pink":
+    case "deep_violet":
     default:
       return {
-        primary: "#6D28D9",
-        accent: "#F472B6",
-        background: "#FAFAFA",
+        primary: "#3B2E7E",
+        accent: "#5B4A9C",
+        background: "#FAF8F5",
         surface: "#FFFFFF",
-        text: "#111111",
+        text: "#1F2933",
         border: "#E5E7EB",
       };
   }
@@ -154,8 +143,8 @@ export function buildThemeCssProperties(settings: StoreSettingsView): CSSPropert
   const textMuted = safe.text_muted_color;
   const border = safe.border_color;
 
-  const primaryRgb = toRgbTriplet(primary, "109 40 217");
-  const accentRgb = toRgbTriplet(accent, "244 114 182");
+  const primaryRgb = toRgbTriplet(primary, "59 46 126");
+  const accentRgb = toRgbTriplet(accent, "91 74 156");
   const headingFont = resolveFontCssVar(settings.font_heading, "var(--font-display)");
   const bodyFont = resolveFontCssVar(settings.font_body, "var(--font-sans)");
   const logoDesktop = Number(settings.logo_size_desktop) > 0 ? settings.logo_size_desktop : 32;

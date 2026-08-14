@@ -33,7 +33,11 @@ export function ProductsClient({ initialProducts }: { initialProducts: Product[]
   const [sort, setSort] = useState<SortKey>("newest");
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    setMounted(true);
+    const initialCategory = new URLSearchParams(window.location.search).get("categoria");
+    if (initialCategory) setCategory(initialCategory);
+  }, []);
 
   const categories = useMemo(
     () => {

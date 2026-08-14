@@ -6,6 +6,7 @@ import type {
   ProductSection,
   ProductSectionType,
   TestimonialsData,
+  VisualSequenceData,
 } from "./types";
 
 /**
@@ -23,11 +24,11 @@ function genId(): string {
 
 export function defaultBenefitsData(): BenefitsData {
   return {
-    heading: "Por qué te va a encantar",
+    heading: "Beneficios",
     items: [
-      { icon: "shield", title: "Calidad garantizada", description: "Producto probado y aprobado." },
-      { icon: "truck", title: "Envío rápido", description: "Despacho dentro de 24 h hábiles." },
-      { icon: "heart", title: "Pensado para tu mascota", description: "Diseño que se adapta a su rutina." },
+      { icon: "shield", title: "Calidad verificada", description: "Edita este texto con lo que respalda a tu producto." },
+      { icon: "truck", title: "Despacho a domicilio", description: "Coordinamos el envío según la información del checkout." },
+      { icon: "sparkles", title: "Pensado para tu rutina", description: "Describe aquí cómo se integra a tu día a día." },
     ],
   };
 }
@@ -46,8 +47,8 @@ export function defaultFaqData(): FaqData {
     heading: "Preguntas frecuentes",
     items: [
       {
-        question: "¿Cuánto demora el envío?",
-        answer: "Despachamos dentro de 24 h hábiles desde Santiago.",
+        question: "Escribe aquí una pregunta frecuente sobre este producto.",
+        answer: "Escribe aquí la respuesta. Puedes agregar más preguntas con el botón de abajo.",
       },
     ],
   };
@@ -58,12 +59,12 @@ export function defaultTestimonialsData(): TestimonialsData {
     heading: "Lo que dicen quienes ya lo probaron",
     items: [
       {
-        name: "Camila",
-        city: "Santiago",
+        name: "Nombre del cliente",
+        city: "",
         rating: 5,
-        comment: "Excelente producto, mi gata lo amó.",
+        comment: "Reemplaza este ejemplo con un comentario real de un cliente.",
         photo_url: "",
-        date_label: "hace 2 semanas",
+        date_label: "",
       },
     ],
   };
@@ -71,15 +72,19 @@ export function defaultTestimonialsData(): TestimonialsData {
 
 export function defaultBeforeAfterData(): BeforeAfterData {
   return {
-    heading: "Antes y después",
+    heading: "",
     before_title: "Antes",
-    before_description: "❌ Malos olores\n❌ Arena en el piso\n❌ Limpieza constante",
+    before_description: "",
     before_image_url: "",
     after_title: "Después",
-    after_description: "✅ Ambiente limpio\n✅ Menos suciedad\n✅ Tu casa huele mejor",
+    after_description: "",
     after_image_url: "",
     layout: "side_by_side",
   };
+}
+
+export function defaultVisualSequenceData(): VisualSequenceData {
+  return { slides: [] };
 }
 
 // ─── Factory ─────────────────────────────────────────────────────────────────
@@ -100,6 +105,8 @@ export function createNewSection(
       return { ...base, type: "testimonials", data: defaultTestimonialsData() };
     case "before_after":
       return { ...base, type: "before_after", data: defaultBeforeAfterData() };
+    case "visual_sequence":
+      return { ...base, type: "visual_sequence", data: defaultVisualSequenceData() };
     default: {
       const _exhaustive: never = type;
       throw new Error(`Tipo de sección desconocido: ${String(_exhaustive)}`);

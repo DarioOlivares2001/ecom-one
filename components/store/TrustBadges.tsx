@@ -1,20 +1,20 @@
-import { Truck, ShieldCheck, RotateCcw } from "lucide-react";
+import { Headphones, PackageCheck, ShieldCheck } from "lucide-react";
 
 const badges = [
   {
-    icon: Truck,
-    label: "Entrega rápida",
-    sub: "A todo el país",
-  },
-  {
     icon: ShieldCheck,
-    label: "Pago seguro",
-    sub: "con Flow",
+    label: "Compra protegida",
+    sub: "Pago en línea",
   },
   {
-    icon: RotateCcw,
-    label: "Devolución fácil",
-    sub: "Hasta 30 días",
+    icon: PackageCheck,
+    label: "Información de envío",
+    sub: "Detalles en el checkout",
+  },
+  {
+    icon: Headphones,
+    label: "Soporte de compra",
+    sub: "Antes y después de tu pedido",
   },
 ];
 

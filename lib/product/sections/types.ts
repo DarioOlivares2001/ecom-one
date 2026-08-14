@@ -82,16 +82,11 @@ export const BEFORE_AFTER_LAYOUTS = ["side_by_side", "stacked"] as const;
 export type BeforeAfterLayout = (typeof BEFORE_AFTER_LAYOUTS)[number];
 
 /**
- * Bloque comparativo "Antes / Después".
- *
- * Pensado para limpieza, olores, organización, etc. Cada lado es enteramente
- * opcional (texto e imagen), pero al renderizar debe existir al menos un lado
- * con algún contenido — el renderer público filtra el caso vacío.
- *
- * `before_description` y `after_description` aceptan saltos de línea (renderer
- * usa `whitespace-pre-line`) para soportar listas tipo:
- *   ❌ malos olores
- *   ❌ arena en el piso
+ * Bloque comparador "Antes / Después": una imagen con divisor deslizable
+ * (mouse/touch/teclado) superpuesta sobre otra. `before_description`,
+ * `after_description` y `layout` quedan solo por compatibilidad con datos
+ * antiguos del diseño previo de 2 columnas — el editor y el render actuales
+ * ya no los usan.
  */
 export const beforeAfterDataSchema = z.object({
   heading: z.string().trim().max(80).optional(),
@@ -105,6 +100,20 @@ export const beforeAfterDataSchema = z.object({
   after_image_url: z.string().url().or(z.literal("")).optional(),
 
   layout: z.enum(BEFORE_AFTER_LAYOUTS).default("side_by_side"),
+});
+
+/**
+ * Bloque "Secuencia visual": creativos verticales donde el titular y el copy
+ * ya están integrados en la propia imagen. El mantenedor solo sube, ordena y
+ * activa/desactiva — no hay campos de texto por lámina aparte de `alt`.
+ */
+export const visualSlideSchema = z.object({
+  image_url: z.string().url(),
+  alt: z.string().trim().max(180).optional(),
+});
+
+export const visualSequenceDataSchema = z.object({
+  slides: z.array(visualSlideSchema).max(12).default([]),
 });
 
 // ─── Base + discriminated union ──────────────────────────────────────────────
@@ -136,6 +145,10 @@ export const sectionSchema = z.discriminatedUnion("type", [
     type: z.literal("before_after"),
     data: beforeAfterDataSchema,
   }),
+  sectionBaseSchema.extend({
+    type: z.literal("visual_sequence"),
+    data: visualSequenceDataSchema,
+  }),
 ]);
 
 export const productSectionsSchema = z.array(sectionSchema).max(20);
@@ -150,17 +163,37 @@ export type FaqData = z.infer<typeof faqDataSchema>;
 export type TestimonialItem = z.infer<typeof testimonialItemSchema>;
 export type TestimonialsData = z.infer<typeof testimonialsDataSchema>;
 export type BeforeAfterData = z.infer<typeof beforeAfterDataSchema>;
+export type VisualSlide = z.infer<typeof visualSlideSchema>;
+export type VisualSequenceData = z.infer<typeof visualSequenceDataSchema>;
 export type ProductSection = z.infer<typeof sectionSchema>;
 export type ProductSectionList = z.infer<typeof productSectionsSchema>;
 export type ProductSectionType = ProductSection["type"];
 
 // ─── Registry para el admin builder ──────────────────────────────────────────
+// Orden = orden en el menú "Agregar bloque". Los 3 primeros son el flujo
+// recomendado (image-first) para productos nuevos; el resto se mantiene solo
+// por compatibilidad con productos que ya los usan.
 
 export const SECTION_REGISTRY: {
   type: ProductSectionType;
   label: string;
   description: string;
 }[] = [
+  {
+    type: "visual_sequence",
+    label: "Secuencia visual",
+    description: "Creativos verticales con titular y copy ya integrados en la imagen.",
+  },
+  {
+    type: "before_after",
+    label: "Comparador antes/después",
+    description: "Divisor deslizable entre dos imágenes (mouse, touch y teclado).",
+  },
+  {
+    type: "faq",
+    label: "Preguntas frecuentes",
+    description: "Acordeón de preguntas frecuentes.",
+  },
   {
     type: "benefits",
     label: "Beneficios",
@@ -172,18 +205,8 @@ export const SECTION_REGISTRY: {
     description: "Una imagen full-width con leyenda opcional.",
   },
   {
-    type: "faq",
-    label: "Preguntas",
-    description: "Acordeón de preguntas frecuentes.",
-  },
-  {
     type: "testimonials",
     label: "Testimonios",
     description: "Tarjetas curadas con foto, nombre y comentario.",
-  },
-  {
-    type: "before_after",
-    label: "Antes / Después",
-    description: "Comparativa visual antes vs. después (limpieza, olores, etc.).",
   },
 ];

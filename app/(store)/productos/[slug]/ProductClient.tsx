@@ -364,24 +364,6 @@ export function ProductClient({ product, reviews, variants, upsellSuggestions = 
       : displayStock <= 30
         ? "⚡ Alta demanda hoy"
         : null;
-  const whyBuyCards = [
-    {
-      title: "Descuentos automáticos",
-      description: "Al agregar más productos se activan beneficios en tu carrito.",
-    },
-    {
-      title: "Compra asistida por WhatsApp",
-      description: "Te ayudamos rápido con dudas, stock y coordinación del pedido.",
-    },
-    {
-      title: "Selección pensada para mascotas",
-      description: "Catálogo curado con foco en calidad, utilidad y confianza.",
-    },
-    {
-      title: "Envío gratis por monto mínimo",
-      description: "Desbloquea despacho sin costo cuando alcanzas el umbral.",
-    },
-  ];
   const cartProductIds = useMemo(
     () => new Set(cartItems.map((i) => i.product_id)),
     [cartItems]
@@ -816,19 +798,6 @@ export function ProductClient({ product, reviews, variants, upsellSuggestions = 
         </div>
       ) : hasDescription ? (
         <section className="mx-auto mt-20 max-w-2xl px-4 sm:px-6 lg:px-8">
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-60px" }}
-            transition={{ duration: 0.42, ease: "easeOut" }}
-            className="mb-7 rounded-[var(--radius-lg)] border border-amber-200 bg-amber-50/70 px-4 py-4"
-          >
-            <p className="text-lg font-bold text-amber-900">😺 Haz feliz a tu gato hoy</p>
-            <p className="mt-1 text-sm text-amber-800">
-              Menos olor, menos limpieza, más tranquilidad para ti.
-            </p>
-          </motion.div>
-
           <motion.h2
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -847,43 +816,6 @@ export function ProductClient({ product, reviews, variants, upsellSuggestions = 
             className="text-[var(--color-text-muted)] [&_a]:underline [&_a:hover]:opacity-70 [&_h1]:mb-3 [&_h1]:font-display [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:text-[var(--color-text)] [&_h2]:mb-2 [&_h2]:mt-6 [&_h2]:font-display [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-[var(--color-text)] [&_h3]:mb-2 [&_h3]:mt-4 [&_h3]:font-semibold [&_h3]:text-[var(--color-text)] [&_li]:mb-1 [&_ol]:mb-4 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:mb-4 [&_p]:text-base [&_p]:leading-relaxed [&_strong]:font-semibold [&_ul]:mb-4 [&_ul]:list-disc [&_ul]:pl-5"
             dangerouslySetInnerHTML={{ __html: product.description! }}
           />
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-60px" }}
-            transition={{ duration: 0.6, ease: "easeOut" }}
-            className="relative mt-10 overflow-hidden rounded-[var(--radius-lg)] border border-zinc-200 bg-white p-5 shadow-[0_14px_34px_rgba(0,0,0,0.06)] sm:p-6"
-          >
-            <div
-              aria-hidden
-              className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-brand-gradient"
-            />
-            <h3 className="font-display text-xl font-bold text-zinc-900 sm:text-2xl">
-              ¿Por qué comprarlo aquí?
-            </h3>
-            <p className="mt-1 text-sm text-zinc-600">
-              Diseñamos una experiencia de compra simple, confiable y pensada para tu mascota.
-            </p>
-            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {whyBuyCards.map((item) => (
-                <motion.div
-                  key={item.title}
-                  initial={{ opacity: 0, y: 12 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true, margin: "-50px" }}
-                  transition={{ duration: 0.34, ease: "easeOut" }}
-                  whileHover={{ y: -3, scale: 1.01 }}
-                  className="rounded-[var(--radius-md)] border border-zinc-200 bg-zinc-50 px-3.5 py-3.5 transition-colors hover:border-zinc-300"
-                >
-                  <p className="text-sm font-semibold text-zinc-900">{item.title}</p>
-                  <p className="mt-1 text-xs leading-relaxed text-zinc-600">
-                    {item.description}
-                  </p>
-                </motion.div>
-              ))}
-            </div>
-          </motion.div>
         </section>
       ) : null}
 
@@ -943,25 +875,6 @@ export function ProductClient({ product, reviews, variants, upsellSuggestions = 
             </div>
           )}
         </section>
-
-      <section className="mt-10 px-4 sm:px-6 lg:px-8">
-        <div className="rounded-[var(--radius-md)] border border-zinc-200 bg-zinc-50 px-4 py-4 sm:px-5">
-          <div className="space-y-2.5 text-sm text-zinc-700">
-            <p className="flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-              <span>Garantía de satisfacción 10 días</span>
-            </p>
-            <p className="flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-              <span>Más de 1000 clientes felices</span>
-            </p>
-            <p className="flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-              <span>Respuesta rápida por WhatsApp</span>
-            </p>
-          </div>
-        </div>
-      </section>
 
       <AnimatePresence>
         {reviewModalOpen && (

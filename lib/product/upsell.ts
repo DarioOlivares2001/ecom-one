@@ -2,21 +2,6 @@ import type { Json, Product } from "@/lib/db/types";
 import { normalizeOptimizedImageUrl } from "@/lib/images/normalizeOptimizedImageUrl";
 import { isAllowedImageSrc } from "@/lib/images/isAllowedImageSrc";
 
-const CONTEXTS = [
-  {
-    sourceKeywords: ["arena", "sanitaria", "arenero"],
-    targetKeywords: ["alfombra", "bolsa", "sanitaria", "spray", "antiolor"],
-  },
-  {
-    sourceKeywords: ["snack", "catnip"],
-    targetKeywords: ["plato", "comedero", "arena", "bolsa"],
-  },
-  {
-    sourceKeywords: ["plato", "comedero"],
-    targetKeywords: ["snack", "alimento"],
-  },
-] as const;
-
 export type ProductUpsellSuggestion = {
   id: string;
   slug: string;
@@ -31,24 +16,22 @@ export type ProductUpsellSuggestion = {
   discount_steps: Json;
 };
 
-function buildBlob(p: Product) {
-  return [p.name, p.category ?? "", ...(p.tags ?? [])].join(" ").toLowerCase();
-}
-
 /** URL optimizada solo si además es de un host permitido (nunca una imagen rota, ej. *.supabase.co). */
 function safeUpsellImage(url: string): string {
   const normalized = normalizeOptimizedImageUrl(url);
   return isAllowedImageSrc(normalized) ? normalized : "";
 }
 
+/**
+ * Sugiere productos relacionados: mismos categoría primero (señal real del
+ * catálogo, no palabras clave fijas), luego los más baratos.
+ */
 export function pickProductUpsellSuggestions(
   currentProduct: Product,
   products: Product[],
   max = 2
 ): ProductUpsellSuggestion[] {
-  const sourceBlob = buildBlob(currentProduct);
-  const activeContext = CONTEXTS.find((c) => c.sourceKeywords.some((k) => sourceBlob.includes(k)));
-  const contextKeywords = activeContext?.targetKeywords ?? [];
+  const currentCategory = (currentProduct.category ?? "").trim().toLowerCase();
 
   // Sugerencias de productos relacionados (sin oferta): activo, con stock,
   // distinto al actual y sin variantes (no se pueden agregar en una sola unidad).
@@ -62,10 +45,10 @@ export function pickProductUpsellSuggestions(
 
   const scored = pool
     .map((p) => {
-      const blob = buildBlob(p);
-      const keywordScore = contextKeywords.reduce((acc, k) => acc + (blob.includes(k) ? 5 : 0), 0);
+      const sameCategoryScore =
+        currentCategory && (p.category ?? "").trim().toLowerCase() === currentCategory ? 5 : 0;
       const cheapScore = p.price <= 12000 ? 2 : p.price <= 25000 ? 1 : 0;
-      return { p, score: keywordScore + cheapScore };
+      return { p, score: sameCategoryScore + cheapScore };
     })
     .sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score;

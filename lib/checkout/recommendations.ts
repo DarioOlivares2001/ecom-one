@@ -26,27 +26,6 @@ export function computeUpsellAppliedPercent(
   return Math.min(UPSELL_BASE_PERCENT, cap);
 }
 
-const CONTEXT_RULES = [
-  {
-    id: "litter",
-    cartKeywords: ["arena", "arenero", "sanitaria"],
-    recommendKeywords: ["alfombra", "bolsa", "sanitaria", "spray", "antiolor", "arenero"],
-    title: "Completa la limpieza de tu gato 🐾",
-  },
-  {
-    id: "snack",
-    cartKeywords: ["snack", "catnip", "galleta"],
-    recommendKeywords: ["plato", "comedero", "juguete", "arena", "bolsa"],
-    title: "Haz más feliz a tu michi 😸",
-  },
-  {
-    id: "bowl",
-    cartKeywords: ["plato", "comedero"],
-    recommendKeywords: ["snack", "alimento", "bolsa"],
-    title: "Combina perfecto con snacks 🐟",
-  },
-] as const;
-
 export const FALLBACK_RECOMMENDATION_TITLE = "Antes de pagar, muchos agregan esto";
 
 export type CheckoutRecRow = {
@@ -78,35 +57,6 @@ export type CheckoutRecProduct = Pick<
   discount_max_percent?: number | null;
   discount_steps?: Json;
 };
-
-export function getRecommendationContext(cartProductNames: string[]): {
-  title: string;
-  recommendKeywords: string[] | null;
-} {
-  const cartBlob = cartProductNames.join(" ").toLowerCase();
-  for (const rule of CONTEXT_RULES) {
-    if (rule.cartKeywords.some((k) => cartBlob.includes(k))) {
-      return { title: rule.title, recommendKeywords: [...rule.recommendKeywords] };
-    }
-  }
-  return { title: FALLBACK_RECOMMENDATION_TITLE, recommendKeywords: null };
-}
-
-function scoreByContextKeywords(product: CheckoutRecRow, keywords: string[] | null): number {
-  if (!keywords || keywords.length === 0) return 0;
-  const blob = [product.name, product.category ?? "", ...(product.tags ?? [])]
-    .join(" ")
-    .toLowerCase();
-  return keywords.reduce((acc, k) => acc + (blob.includes(k) ? 4 : 0), 0);
-}
-
-function scoreGenericComplementary(product: CheckoutRecRow): number {
-  const blob = [product.name, product.category ?? "", ...(product.tags ?? [])]
-    .join(" ")
-    .toLowerCase();
-  const genericHints = ["bolsa", "snack", "juguete", "arena", "comedero", "accesorio"];
-  return genericHints.reduce((acc, k) => acc + (blob.includes(k) ? 1 : 0), 0);
-}
 
 /**
  * Motor de UPSELLS (descuento inicial fijo, independiente de cantidad):
@@ -152,17 +102,20 @@ export function computeSafeUpsellDiscountFromProduct(
 }
 
 /**
- * Elige hasta `max` productos: excluye carrito, aplica contexto inteligente
- * y usa descuento seguro si `cost_price` lo permite.
+ * Elige hasta `max` productos: excluye carrito y usa descuento seguro si
+ * `cost_price` lo permite. `cartProductNames` se mantiene en la firma por
+ * compatibilidad con los callers (API de checkout/upsells) aunque ya no
+ * se usa para puntuar — sin un motor de categorías por contexto, ordenar
+ * por stock es tan válido como cualquier heurística de palabras clave.
  */
 export function pickCheckoutRecommendations(
   rows: CheckoutRecRow[],
   excludeProductIds: string[],
-  cartProductNames: string[],
+  _cartProductNames: string[],
   max = 2
 ): { title: string; products: CheckoutRecProduct[] } {
   const ex = new Set(excludeProductIds);
-  const { title, recommendKeywords } = getRecommendationContext(cartProductNames);
+  const title = FALLBACK_RECOMMENDATION_TITLE;
   // Solo entran al "pool de ofertas" productos con descuento habilitado y tope > 0.
   // discount_max_percent es TOPE, no descuento aplicado; el % real lo decide safeDiscount.
   const pool = rows.filter(
@@ -173,19 +126,6 @@ export function pickCheckoutRecommendations(
       p.discount_enabled === true &&
       Number(p.discount_max_percent) > 0
   );
-
-  const scored = pool
-    .map((p) => ({
-      p,
-      score: scoreByContextKeywords(p, recommendKeywords) + scoreGenericComplementary(p),
-    }))
-    .sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-      return b.p.stock - a.p.stock;
-    });
-
-  const picked: CheckoutRecProduct[] = [];
-  const seen = new Set<string>();
 
   function toProduct(p: CheckoutRecRow): CheckoutRecProduct {
     // El % anunciado del upsell es el tope `discount_max_percent` (no step-based).
@@ -211,23 +151,10 @@ export function pickCheckoutRecommendations(
     };
   }
 
-  for (const { p } of scored) {
-    if (picked.length >= max) break;
-    if (seen.has(p.id)) continue;
-    seen.add(p.id);
-    picked.push(toProduct(p));
-  }
+  const products = [...pool]
+    .sort((a, b) => b.stock - a.stock)
+    .slice(0, max)
+    .map(toProduct);
 
-  if (picked.length < max) {
-    const rest = pool
-      .filter((p) => !seen.has(p.id))
-      .sort((a, b) => b.stock - a.stock);
-    for (const p of rest) {
-      if (picked.length >= max) break;
-      seen.add(p.id);
-      picked.push(toProduct(p));
-    }
-  }
-
-  return { title, products: picked.slice(0, max) };
+  return { title, products };
 }

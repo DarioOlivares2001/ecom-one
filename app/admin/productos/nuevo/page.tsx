@@ -12,7 +12,6 @@ import { Input } from "@/components/ui/Input";
 import { toast } from "@/components/ui/Toast";
 import { createProductAction } from "./actions";
 import { compressImageIfNeeded } from "@/lib/images/compressImage";
-import { ECOMMERCE_CATEGORIES } from "@/lib/product/categories";
 import {
   ADMIN_DEFAULT_LABEL,
   ADMIN_DEFAULT_MAX_PERCENT,
@@ -47,8 +46,6 @@ function slugify(text: string) {
     .replace(/-+/g, "-")
     .trim();
 }
-
-const CATEGORIES = [...ECOMMERCE_CATEGORIES];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -622,18 +619,11 @@ export default function NuevoProductoPage() {
 
             {/* Category */}
             <Card title="Categoría">
-              <select
-                className={inputCls}
+              <Input
+                placeholder="Ej: Hogar, Tecnología, Accesorios..."
                 value={form.category}
                 onChange={field("category")}
-              >
-                <option value="">Sin categoría</option>
-                {CATEGORIES.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
+              />
             </Card>
 
             <Card title="Dropi (opcional)">

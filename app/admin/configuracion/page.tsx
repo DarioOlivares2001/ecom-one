@@ -75,7 +75,7 @@ async function saveSettingsAction(formData: FormData): Promise<{ error?: string;
 
   const validThemePreset = [
     "minimal_black",
-    "pets_purple_pink",
+    "deep_violet",
     "premium_dark",
     "natural_green",
     "pastel",
@@ -244,7 +244,7 @@ export default async function ConfiguracionPage() {
               className="h-10 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm font-medium text-[var(--color-text)] outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
             >
               <option value="minimal_black">Minimal negro</option>
-              <option value="pets_purple_pink">Mascotas morado/rosado</option>
+              <option value="deep_violet">Violeta profundo</option>
               <option value="premium_dark">Premium oscuro</option>
               <option value="natural_green">Natural/verde</option>
               <option value="pastel">Pastel</option>
@@ -454,13 +454,13 @@ export default async function ConfiguracionPage() {
           label="Nombre de la tienda"
           name="store_name"
           defaultValue={settings.store_name}
-          placeholder="PonkyBonk"
+          placeholder="Tienda"
         />
         <Field
           label="Tagline"
           name="store_tagline"
           defaultValue={settings.store_tagline}
-          placeholder="Todo para gatos felices"
+          placeholder="Productos que hacen la diferencia"
         />
         <LogoUploadField
           formId="store-settings-form"

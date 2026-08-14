@@ -56,14 +56,14 @@ function getThemeFromPreset(preset: string): Palette {
         text: "#334155",
         border: "#F1DDF0",
       };
-    case "pets_purple_pink":
+    case "deep_violet":
     default:
       return {
-        primary: "#6D28D9",
-        accent: "#F472B6",
-        background: "#FAFAFA",
+        primary: "#3B2E7E",
+        accent: "#5B4A9C",
+        background: "#FAF8F5",
         surface: "#FFFFFF",
-        text: "#111111",
+        text: "#1F2933",
         border: "#E5E7EB",
       };
   }
@@ -239,7 +239,7 @@ export function ThemeLivePreview({ formId, initial }: ThemeLivePreviewProps) {
               className="mt-1 text-sm font-semibold"
               style={{ fontFamily: headingFontVar }}
             >
-              Arena premium para gato
+              Producto destacado de ejemplo
             </p>
             <p className="mt-1 text-sm" style={{ color: palette.primary }}>
               $19.990

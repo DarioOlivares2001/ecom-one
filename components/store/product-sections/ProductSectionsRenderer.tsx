@@ -7,6 +7,7 @@ import { BenefitsSection } from "./BenefitsSection";
 import { FaqSection } from "./FaqSection";
 import { MediaStripSection } from "./MediaStripSection";
 import { TestimonialsSection } from "./TestimonialsSection";
+import { VisualSequenceSection } from "./VisualSequenceSection";
 
 interface ProductSectionsRendererProps {
   /**
@@ -40,6 +41,8 @@ export function ProductSectionsRenderer({ sections }: ProductSectionsRendererPro
             return <TestimonialsSection key={section.id} data={section.data} />;
           case "before_after":
             return <BeforeAfterSection key={section.id} data={section.data} />;
+          case "visual_sequence":
+            return <VisualSequenceSection key={section.id} data={section.data} />;
           default: {
             // Garantía de exhaustividad para futuras secciones nuevas.
             const _exhaustive: never = section;
