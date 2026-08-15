@@ -29,7 +29,7 @@ export function SingleImageSection({ data, fallbackEyebrow }: SingleImageSection
   return (
     <SectionContainer heading={data.heading} eyebrow={data.heading ? undefined : fallbackEyebrow}>
       {description && (
-        <p className="mb-5 whitespace-pre-line text-sm leading-relaxed text-[var(--color-text-muted)] sm:text-base">
+        <p className="mb-4 whitespace-pre-line text-sm leading-relaxed text-[var(--color-text-muted)] sm:text-base">
           {description}
         </p>
       )}

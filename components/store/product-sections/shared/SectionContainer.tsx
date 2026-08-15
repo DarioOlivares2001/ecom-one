@@ -21,19 +21,21 @@ export function SectionContainer({
   children,
   bare = false,
 }: SectionContainerProps) {
+  // Sin margen vertical propio: la separación entre bloques la controla el
+  // `gap` del contenedor en `ProductSectionsRenderer` (ver ese archivo).
   if (bare) {
-    return <section className="mt-12 sm:mt-16">{children}</section>;
+    return <section>{children}</section>;
   }
 
   return (
-    <section className="mx-auto mt-12 max-w-2xl px-4 sm:mt-16 sm:px-6 lg:px-8">
+    <section className="mx-auto max-w-2xl px-4 sm:px-6 lg:px-8">
       {(eyebrow || heading) && (
         <motion.header
           initial={{ opacity: 0, y: 16 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: "-60px" }}
           transition={{ duration: 0.42, ease: "easeOut" }}
-          className="mb-6 sm:mb-8"
+          className="mb-3"
         >
           {eyebrow && (
             <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--color-text-muted)]">

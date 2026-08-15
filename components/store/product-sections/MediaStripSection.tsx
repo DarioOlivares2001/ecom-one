@@ -27,7 +27,7 @@ export function MediaStripSection({ data }: MediaStripSectionProps) {
     <SectionContainer bare>
       <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
         {description && (
-          <p className="mb-5 whitespace-pre-line text-sm leading-relaxed text-[var(--color-text-muted)] sm:text-base">
+          <p className="mb-4 whitespace-pre-line text-sm leading-relaxed text-[var(--color-text-muted)] sm:text-base">
             {description}
           </p>
         )}

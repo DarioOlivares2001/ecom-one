@@ -20,12 +20,12 @@ export function BenefitsSection({ data }: BenefitsSectionProps) {
   return (
     <SectionContainer heading={data.heading} eyebrow={data.heading ? undefined : "Beneficios"}>
       {description && (
-        <p className="mb-5 whitespace-pre-line text-sm leading-relaxed text-[var(--color-text-muted)] sm:text-base">
+        <p className="mb-4 whitespace-pre-line text-sm leading-relaxed text-[var(--color-text-muted)] sm:text-base">
           {description}
         </p>
       )}
       {imageUrl && (
-        <div className="mb-5 overflow-hidden rounded-[var(--radius-lg)] border border-zinc-200 bg-zinc-100">
+        <div className="mb-4 overflow-hidden rounded-[var(--radius-lg)] border border-zinc-200 bg-zinc-100">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={imageUrl}

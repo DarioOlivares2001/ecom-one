@@ -29,7 +29,14 @@ export function ProductSectionsRenderer({ sections }: ProductSectionsRendererPro
   if (visible.length === 0) return null;
 
   return (
-    <div className="space-y-0">
+    // Ritmo vertical entre bloques (24px mobile / 32px desktop): `gap` en vez
+    // de márgenes por bloque para no depender de que ningún margin-collapse
+    // ni utilidad tipo `space-y` termine anulándolo (justo lo que pasaba antes
+    // acá: `space-y-0` pisaba el `margin-top` propio de cada `SectionContainer`
+    // por especificidad CSS, pegando el título del bloque siguiente al
+    // contenido del anterior). Cada bloque ya no trae su propio margen
+    // vertical — este `gap` es la única fuente de separación entre bloques.
+    <div className="grid gap-6 sm:gap-8">
       {visible.map((section) => {
         switch (section.type) {
           case "benefits":
