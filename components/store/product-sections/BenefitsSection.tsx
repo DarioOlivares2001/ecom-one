@@ -14,8 +14,22 @@ interface BenefitsSectionProps {
 export function BenefitsSection({ data }: BenefitsSectionProps) {
   if (!data.items?.length) return null;
 
+  const imageUrl = data.image_url?.trim();
+
   return (
     <SectionContainer heading={data.heading} eyebrow={data.heading ? undefined : "Beneficios"}>
+      {imageUrl && (
+        <div className="mb-5 overflow-hidden rounded-[var(--radius-lg)] border border-zinc-200 bg-zinc-100">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={imageUrl}
+            alt={data.heading ?? ""}
+            className="block w-full"
+            loading="lazy"
+            decoding="async"
+          />
+        </div>
+      )}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {data.items.map((item, index) => {
           const Icon = getBenefitIcon(item.icon);

@@ -4,12 +4,14 @@ import { getAdminSessionFromCookies } from "@/lib/admin/session";
 
 export const runtime = "nodejs";
 
-const PATH_PREFIX = "product-sections/";
+const PATH_PREFIX = "products/";
 
 /**
- * Sube una imagen para un bloque modular de la ficha (secuencia visual,
- * comparador antes/después). Mismo bucket/credenciales R2 que el resto del
- * admin — no hay pegado manual de URL, el mantenedor solo elige el archivo.
+ * Sube una imagen a la biblioteca de medios del producto (galería principal
+ * y bloques modulares de la ficha comparten el mismo `products.images`).
+ * Mismo bucket/credenciales R2 que el resto del admin — no hay pegado manual
+ * de URL, el mantenedor solo elige el archivo y luego la reutiliza donde
+ * quiera desde la biblioteca.
  */
 export async function POST(req: Request) {
   try {
@@ -56,7 +58,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ url });
   } catch (e) {
-    console.error("[product-section-image-upload-error]", e);
+    console.error("[product-image-upload-error]", e);
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Error interno" },
       { status: 500 }

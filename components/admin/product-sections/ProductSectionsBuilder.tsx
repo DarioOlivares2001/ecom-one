@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   createNewSection,
@@ -11,11 +11,14 @@ import type {
   BeforeAfterData,
   BenefitsData,
   FaqData,
+  MeasurementsData,
   MediaStripData,
   ProductSection,
   ProductSectionList,
   ProductSectionType,
   TestimonialsData,
+  UsageData,
+  VersatilityData,
   VisualSequenceData,
 } from "@/lib/product/sections/types";
 
@@ -24,6 +27,7 @@ import { BeforeAfterEditor } from "./editors/BeforeAfterEditor";
 import { BenefitsEditor } from "./editors/BenefitsEditor";
 import { FaqEditor } from "./editors/FaqEditor";
 import { MediaStripEditor } from "./editors/MediaStripEditor";
+import { SingleImageEditor } from "./editors/SingleImageEditor";
 import { TestimonialsEditor } from "./editors/TestimonialsEditor";
 import { VisualSequenceEditor } from "./editors/VisualSequenceEditor";
 import { SectionCard } from "./SectionCard";
@@ -33,6 +37,15 @@ interface ProductSectionsBuilderProps {
   initialSections: unknown;
   /** Nombre del hidden input que se enviará en el FormData del form padre. */
   hiddenInputName: string;
+  /** Biblioteca de medios del producto (`products.images`), para los selectores de imagen de cada bloque. */
+  images: string[];
+  /**
+   * Espejo de solo lectura del estado interno hacia el padre — no cambia el
+   * comportamiento uncontrolled del componente, solo le permite al padre (ej.
+   * para el aviso "esta imagen se usa en...") saber qué bloques existen sin
+   * romper el aislamiento de `initialSections`.
+   */
+  onSectionsChange?: (sections: ProductSectionList) => void;
 }
 
 const MAX_SECTIONS = 20;
@@ -40,6 +53,8 @@ const MAX_SECTIONS = 20;
 export function ProductSectionsBuilder({
   initialSections,
   hiddenInputName,
+  images,
+  onSectionsChange,
 }: ProductSectionsBuilderProps) {
   // El componente es UNCONTROLLED: parseamos `initialSections` una sola vez al
   // montar para que re-renders del padre (cambios en otros campos del form) no
@@ -57,6 +72,11 @@ export function ProductSectionsBuilder({
   });
 
   const serialized = useMemo(() => JSON.stringify(sections), [sections]);
+
+  useEffect(() => {
+    onSectionsChange?.(sections);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sections]);
 
   function commit(next: ProductSectionList) {
     setSections(reindexSections(next));
@@ -156,6 +176,7 @@ export function ProductSectionsBuilder({
                 {section.type === "benefits" && (
                   <BenefitsEditor
                     data={section.data}
+                    images={images}
                     onChange={(next: BenefitsData) =>
                       handleUpdateData(section.id, next)
                     }
@@ -164,6 +185,7 @@ export function ProductSectionsBuilder({
                 {section.type === "media_strip" && (
                   <MediaStripEditor
                     data={section.data}
+                    images={images}
                     onChange={(next: MediaStripData) =>
                       handleUpdateData(section.id, next)
                     }
@@ -188,6 +210,7 @@ export function ProductSectionsBuilder({
                 {section.type === "before_after" && (
                   <BeforeAfterEditor
                     data={section.data}
+                    images={images}
                     onChange={(next: BeforeAfterData) =>
                       handleUpdateData(section.id, next)
                     }
@@ -196,7 +219,38 @@ export function ProductSectionsBuilder({
                 {section.type === "visual_sequence" && (
                   <VisualSequenceEditor
                     data={section.data}
+                    images={images}
                     onChange={(next: VisualSequenceData) =>
+                      handleUpdateData(section.id, next)
+                    }
+                  />
+                )}
+                {section.type === "usage" && (
+                  <SingleImageEditor
+                    data={section.data}
+                    images={images}
+                    headingPlaceholder='Ej: "Cómo usarlo"'
+                    onChange={(next: UsageData) =>
+                      handleUpdateData(section.id, next)
+                    }
+                  />
+                )}
+                {section.type === "measurements" && (
+                  <SingleImageEditor
+                    data={section.data}
+                    images={images}
+                    headingPlaceholder='Ej: "Medidas"'
+                    onChange={(next: MeasurementsData) =>
+                      handleUpdateData(section.id, next)
+                    }
+                  />
+                )}
+                {section.type === "versatility" && (
+                  <SingleImageEditor
+                    data={section.data}
+                    images={images}
+                    headingPlaceholder='Ej: "Versatilidad"'
+                    onChange={(next: VersatilityData) =>
                       handleUpdateData(section.id, next)
                     }
                   />

@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { isR2Configured, uploadToR2 } from "@/lib/storage/r2";
 import { getAdminSessionFromCookies } from "@/lib/admin/session";
 import {
   createProduct,
@@ -20,6 +19,7 @@ import {
   volumeDiscountToJsonFields,
 } from "@/lib/admin/productVolumeDiscounts";
 import { parseProductSectionsFromFormData } from "@/lib/product/sections/parseFromFormData";
+import { parseImagesFromFormData } from "@/lib/product/parseImagesFromFormData";
 import { validateDropiProductUrl } from "@/lib/products/dropiLink";
 
 export async function createProductAction(
@@ -31,30 +31,10 @@ export async function createProductAction(
 
   const hasVariants = formData.get("has_variants") === "true";
 
-  // ── Upload multiple images in order ───────────────────────
-  const count = Number(formData.get("image_count") ?? "0");
-  const images: string[] = [];
-
-  if (count > 0 && !isR2Configured()) {
-    return { error: "Cloudflare R2 no está configurado todavía. Ver R2_SETUP.md." };
-  }
-
-  for (let i = 0; i < count; i++) {
-    const file = formData.get(`image_${i}`) as File | null;
-    if (!file || file.size === 0) continue;
-
-    const ext = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
-    const key = `products/${Date.now()}-${i}.${ext}`;
-
-    try {
-      const buffer = Buffer.from(await file.arrayBuffer());
-      const publicUrl = await uploadToR2({ key, body: buffer, contentType: file.type });
-      images.push(publicUrl);
-    } catch (uploadError) {
-      const message = uploadError instanceof Error ? uploadError.message : "error desconocido";
-      return { error: `Error subiendo imagen ${i + 1}: ${message}` };
-    }
-  }
+  // ── Imágenes (ya subidas a R2 por la biblioteca de medios) ───────────────
+  const imagesParsed = parseImagesFromFormData(formData);
+  if (!imagesParsed.ok) return { error: imagesParsed.error };
+  const images = imagesParsed.images;
 
   // ── Parse variants ────────────────────────────────────────
   const variantsRaw = formData.get("variants") as string;
@@ -249,37 +229,10 @@ export async function updateProductAction(
 
   const hasVariants = formData.get("has_variants") === "true";
 
-  // ── Process ordered image slots ───────────────────────────
-  const slotCount = Number(formData.get("slot_count") ?? "0");
-  const images: string[] = [];
-  const hasNewSlotFile = Array.from({ length: slotCount }, (_, i) =>
-    formData.get(`slot_${i}_type`)
-  ).includes("new");
-
-  if (hasNewSlotFile && !isR2Configured()) {
-    return { error: "Cloudflare R2 no está configurado todavía. Ver R2_SETUP.md." };
-  }
-
-  for (let i = 0; i < slotCount; i++) {
-    const type = formData.get(`slot_${i}_type`) as string;
-    if (type === "existing") {
-      const url = formData.get(`slot_${i}_url`) as string;
-      if (url) images.push(url);
-    } else if (type === "new") {
-      const file = formData.get(`slot_${i}_file`) as File | null;
-      if (!file || file.size === 0) continue;
-      const ext = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
-      const key = `products/${Date.now()}-${i}.${ext}`;
-      try {
-        const buffer = Buffer.from(await file.arrayBuffer());
-        const publicUrl = await uploadToR2({ key, body: buffer, contentType: file.type });
-        images.push(publicUrl);
-      } catch (uploadError) {
-        const message = uploadError instanceof Error ? uploadError.message : "error desconocido";
-        return { error: `Error subiendo imagen: ${message}` };
-      }
-    }
-  }
+  // ── Imágenes (ya subidas a R2 por la biblioteca de medios) ───────────────
+  const imagesParsed = parseImagesFromFormData(formData);
+  if (!imagesParsed.ok) return { error: imagesParsed.error };
+  const images = imagesParsed.images;
 
   // ── Parse variants ────────────────────────────────────────
   const variantsRaw = formData.get("variants") as string;

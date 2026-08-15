@@ -42,8 +42,27 @@ export type MediaStripAspect = (typeof MEDIA_STRIP_ASPECTS)[number];
 
 export const benefitsDataSchema = z.object({
   heading: z.string().trim().max(80).optional(),
+  /** Imagen principal opcional de la sección, elegida desde la biblioteca del producto. */
+  image_url: z.string().url().or(z.literal("")).default(""),
   items: z.array(benefitItemSchema).min(1).max(6),
 });
+
+/**
+ * Bloques de una sola imagen principal ("Uso / Cómo usar", "Medidas",
+ * "Versatilidad"). Mismo shape que `mediaStripDataSchema` pero como tipos
+ * separados: el admin los distingue por nombre al armar la ficha.
+ */
+function singleImageDataSchema() {
+  return z.object({
+    heading: z.string().trim().max(80).optional(),
+    image_url: z.string().url().or(z.literal("")).default(""),
+    alt: z.string().trim().max(180).optional(),
+  });
+}
+
+export const usageDataSchema = singleImageDataSchema();
+export const measurementsDataSchema = singleImageDataSchema();
+export const versatilityDataSchema = singleImageDataSchema();
 
 export const mediaStripDataSchema = z.object({
   image_url: z.string().url().or(z.literal("")).default(""),
@@ -149,6 +168,18 @@ export const sectionSchema = z.discriminatedUnion("type", [
     type: z.literal("visual_sequence"),
     data: visualSequenceDataSchema,
   }),
+  sectionBaseSchema.extend({
+    type: z.literal("usage"),
+    data: usageDataSchema,
+  }),
+  sectionBaseSchema.extend({
+    type: z.literal("measurements"),
+    data: measurementsDataSchema,
+  }),
+  sectionBaseSchema.extend({
+    type: z.literal("versatility"),
+    data: versatilityDataSchema,
+  }),
 ]);
 
 export const productSectionsSchema = z.array(sectionSchema).max(20);
@@ -165,6 +196,9 @@ export type TestimonialsData = z.infer<typeof testimonialsDataSchema>;
 export type BeforeAfterData = z.infer<typeof beforeAfterDataSchema>;
 export type VisualSlide = z.infer<typeof visualSlideSchema>;
 export type VisualSequenceData = z.infer<typeof visualSequenceDataSchema>;
+export type UsageData = z.infer<typeof usageDataSchema>;
+export type MeasurementsData = z.infer<typeof measurementsDataSchema>;
+export type VersatilityData = z.infer<typeof versatilityDataSchema>;
 export type ProductSection = z.infer<typeof sectionSchema>;
 export type ProductSectionList = z.infer<typeof productSectionsSchema>;
 export type ProductSectionType = ProductSection["type"];
@@ -180,6 +214,26 @@ export const SECTION_REGISTRY: {
   description: string;
 }[] = [
   {
+    type: "benefits",
+    label: "Beneficios",
+    description: "Imagen principal opcional + 3–6 tarjetas con icono, título y subtítulo.",
+  },
+  {
+    type: "usage",
+    label: "Uso / Cómo usar",
+    description: "Una imagen principal que explica cómo se usa el producto.",
+  },
+  {
+    type: "measurements",
+    label: "Medidas",
+    description: "Una imagen principal con las medidas o dimensiones del producto.",
+  },
+  {
+    type: "versatility",
+    label: "Versatilidad",
+    description: "Una imagen principal mostrando los distintos usos del producto.",
+  },
+  {
     type: "visual_sequence",
     label: "Secuencia visual",
     description: "Creativos verticales con titular y copy ya integrados en la imagen.",
@@ -187,17 +241,12 @@ export const SECTION_REGISTRY: {
   {
     type: "before_after",
     label: "Comparador antes/después",
-    description: "Divisor deslizable entre dos imágenes (mouse, touch y teclado).",
+    description: "Divisor deslizable entre dos imágenes elegidas de la biblioteca.",
   },
   {
     type: "faq",
     label: "Preguntas frecuentes",
     description: "Acordeón de preguntas frecuentes.",
-  },
-  {
-    type: "benefits",
-    label: "Beneficios",
-    description: "3–6 tarjetas con icono, título y subtítulo.",
   },
   {
     type: "media_strip",

@@ -2,11 +2,13 @@
 
 import { MEDIA_STRIP_ASPECTS, type MediaStripData } from "@/lib/product/sections/types";
 
+import { ImagePicker } from "../ImagePicker";
 import { inputCls, labelCls } from "../shared";
 
 interface MediaStripEditorProps {
   data: MediaStripData;
   onChange: (next: MediaStripData) => void;
+  images: string[];
 }
 
 const ASPECT_LABEL: Record<MediaStripData["aspect"], string> = {
@@ -15,37 +17,19 @@ const ASPECT_LABEL: Record<MediaStripData["aspect"], string> = {
   "1/1": "Cuadrada (1:1)",
 };
 
-export function MediaStripEditor({ data, onChange }: MediaStripEditorProps) {
+export function MediaStripEditor({ data, onChange, images }: MediaStripEditorProps) {
   function patch(next: Partial<MediaStripData>) {
     onChange({ ...data, ...next });
   }
 
-  const hasImage = data.image_url.trim().length > 0;
-  const looksLikeUrl = /^https?:\/\//i.test(data.image_url.trim());
-  const urlInvalid = hasImage && !looksLikeUrl;
-
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1.5">
-        <label className={labelCls}>URL de la imagen</label>
-        <input
-          className={inputCls}
-          value={data.image_url}
-          onChange={(e) => patch({ image_url: e.target.value })}
-          placeholder="https://..."
-          inputMode="url"
-        />
-        {urlInvalid && (
-          <p className="text-xs text-rose-600">
-            La URL debe empezar con http:// o https://.
-          </p>
-        )}
-        {!hasImage && (
-          <p className="text-xs text-zinc-500">
-            Pega aquí la URL pública de la imagen. Próximamente vamos a sumar carga directa.
-          </p>
-        )}
-      </div>
+      <ImagePicker
+        label="Imagen de la sección"
+        images={images}
+        value={data.image_url}
+        onChange={(url) => patch({ image_url: url })}
+      />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="flex flex-col gap-1.5">
@@ -87,20 +71,6 @@ export function MediaStripEditor({ data, onChange }: MediaStripEditorProps) {
           maxLength={140}
         />
       </div>
-
-      {hasImage && looksLikeUrl && (
-        <div className="overflow-hidden rounded-lg border border-zinc-200 bg-zinc-100">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={data.image_url}
-            alt={data.alt ?? data.caption ?? ""}
-            className="block w-full"
-            style={{ maxHeight: 280, objectFit: "cover" }}
-            loading="lazy"
-            decoding="async"
-          />
-        </div>
-      )}
     </div>
   );
 }

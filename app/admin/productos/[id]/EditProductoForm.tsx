@@ -1,21 +1,18 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import Link from "next/link";
-import { ArrowLeft, Plus, X, Upload, GripVertical } from "lucide-react";
+import { ArrowLeft, Plus, X } from "lucide-react";
 import { clsx } from "clsx";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { toast } from "@/components/ui/Toast";
 import { updateProductAction } from "../nuevo/actions";
-import { compressImageIfNeeded } from "@/lib/images/compressImage";
 import { normalizeProductCategory } from "@/lib/product/categories";
 import type { Json } from "@/lib/db/types";
 import { normalizeDiscountSteps } from "@/lib/discounts";
-import { isAllowedImageSrc } from "@/lib/images/isAllowedImageSrc";
 import {
   ADMIN_DEFAULT_LABEL,
   ADMIN_DEFAULT_MAX_PERCENT,
@@ -27,7 +24,10 @@ import {
   defaultVolumeDiscountStepRows,
   type VolumeDiscountStepRow,
 } from "@/components/admin/ProductVolumeDiscountSection";
+import { ProductMediaLibrary } from "@/components/admin/ProductMediaLibrary";
 import { ProductSectionsBuilder } from "@/components/admin/product-sections/ProductSectionsBuilder";
+import { findSectionsUsingImage } from "@/lib/product/sections/imageUsage";
+import type { ProductSectionList } from "@/lib/product/sections/types";
 
 // ─── Rich text editor (client-only) ──────────────────────────────────────────
 
@@ -61,10 +61,6 @@ function slugify(text: string) {
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-type EditImageItem =
-  | { id: string; type: "existing"; url: string }
-  | { id: string; type: "new"; file: File; preview: string };
 
 type Variant = { name: string; values: string };
 type VariantRow = {
@@ -153,7 +149,6 @@ export function EditProductoForm({
   productVariants: ProductVariantRow[];
 }) {
   const router = useRouter();
-  const fileRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
 
   // Form fields — pre-populated from existing product
@@ -205,16 +200,14 @@ export function EditProductoForm({
     }));
   });
 
-  // Images — start with existing URLs, allow adding new files
-  const [images, setImages] = useState<EditImageItem[]>(() =>
-    (product.images ?? []).map((url: string, i: number) => ({
-      id: `existing-${i}-${url}`,
-      type: "existing" as const,
-      url,
-    }))
-  );
-  const [dropOver, setDropOver] = useState(false);
-  const [dragSrcIdx, setDragSrcIdx] = useState<number | null>(null);
+  // Biblioteca de imágenes del producto — arranca con las URLs ya guardadas;
+  // las que se agreguen en esta sesión ya llegan como URL real (se suben al
+  // elegirlas, no al guardar el producto).
+  const [images, setImages] = useState<string[]>(() => product.images ?? []);
+  const [imagesUploading, setImagesUploading] = useState(false);
+  // Espejo de solo lectura de los bloques modulares, solo para poder avisar
+  // "esta imagen se usa en..." al borrar de la biblioteca (ver ProductSectionsBuilder).
+  const [sectionsSnapshot, setSectionsSnapshot] = useState<ProductSectionList>([]);
 
   const [discountEnabled, setDiscountEnabled] = useState(product.discount_enabled === true);
   const [discountMaxPercent, setDiscountMaxPercent] = useState(
@@ -229,16 +222,6 @@ export function EditProductoForm({
     }))
   );
 
-  // Revoke blob URLs on unmount
-  useEffect(() => {
-    return () => {
-      images.forEach((img) => {
-        if (img.type === "new") URL.revokeObjectURL(img.preview);
-      });
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   // ── Form helpers ────────────────────────────────────────────────────────────
 
   function handleNameChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -249,55 +232,6 @@ export function EditProductoForm({
   function field(key: keyof typeof form) {
     return (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       setForm((f) => ({ ...f, [key]: e.target.value }));
-  }
-
-  // ── Image helpers ───────────────────────────────────────────────────────────
-
-  const addFiles = useCallback(async (files: FileList | File[]) => {
-    const valid = Array.from(files).filter((f) => f.type.startsWith("image/"));
-    if (!valid.length) return;
-    const processed = await Promise.all(valid.map((file) => compressImageIfNeeded(file)));
-    processed.forEach((p) => {
-      if (p.compressed) {
-        console.log("[image-compress] original:", p.originalSize, "compressed:", p.compressedSize, "reduction:", `${p.reducedPercent}%`);
-      }
-    });
-    setImages((prev) => [
-      ...prev,
-      ...processed.map((result) => ({
-        id: `new-${Date.now()}-${Math.random()}`,
-        type: "new" as const,
-        file: result.file,
-        preview: URL.createObjectURL(result.file),
-      })),
-    ]);
-  }, []);
-
-  async function handleDrop(e: React.DragEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    setDropOver(false);
-    await addFiles(e.dataTransfer.files);
-  }
-
-  function removeImage(id: string) {
-    setImages((prev) => {
-      const item = prev.find((i) => i.id === id);
-      if (item?.type === "new") URL.revokeObjectURL(item.preview);
-      return prev.filter((i) => i.id !== id);
-    });
-  }
-
-  function handleThumbDragOver(e: React.DragEvent, toIdx: number) {
-    e.preventDefault();
-    if (dragSrcIdx === null || dragSrcIdx === toIdx) return;
-    setImages((prev) => {
-      const next = [...prev];
-      const [moved] = next.splice(dragSrcIdx, 1);
-      next.splice(toIdx, 0, moved);
-      return next;
-    });
-    setDragSrcIdx(toIdx);
   }
 
   // ── Variant helpers ─────────────────────────────────────────────────────────
@@ -378,6 +312,9 @@ export function EditProductoForm({
     if (!volumeCheck.ok) {
       return toast.error(volumeCheck.error);
     }
+    if (imagesUploading) {
+      return toast.error("Espera a que terminen de subirse las imágenes.");
+    }
 
     setLoading(true);
     try {
@@ -431,16 +368,8 @@ export function EditProductoForm({
         )
       );
 
-      // Ordered image slots — existing URLs or new files
-      fd.append("slot_count", String(images.length));
-      images.forEach((img, i) => {
-        fd.append(`slot_${i}_type`, img.type);
-        if (img.type === "existing") {
-          fd.append(`slot_${i}_url`, img.url);
-        } else {
-          fd.append(`slot_${i}_file`, img.file);
-        }
-      });
+      // Imágenes ya subidas a R2 (biblioteca de medios) — solo viajan sus URLs.
+      fd.append("images_json", JSON.stringify(images));
 
       fd.append("discount_enabled", volumeCheck.data.discount_enabled ? "true" : "false");
       if (volumeCheck.data.discount_enabled) {
@@ -463,7 +392,7 @@ export function EditProductoForm({
 
   // ─────────────────────────────────────────────────────────────────────────────
 
-  const canSaveBase = !!form.name.trim() && !!form.slug.trim();
+  const canSaveBase = !!form.name.trim() && !!form.slug.trim() && !imagesUploading;
   const canSaveWithVariants = variantRows.some((r) => r.active && Number(r.price) > 0);
   const canSave = hasRealVariants
     ? canSaveBase && canSaveWithVariants
@@ -528,123 +457,23 @@ export function EditProductoForm({
               </p>
             </Card>
 
+            {/* Biblioteca de imágenes del producto */}
+            <Card title="Biblioteca de imágenes del producto">
+              <ProductMediaLibrary
+                images={images}
+                onChange={setImages}
+                findUsage={(url) => findSectionsUsingImage(sectionsSnapshot, url)}
+                onUploadingChange={setImagesUploading}
+              />
+            </Card>
+
             {/* Bloques modulares (Fase 2A) */}
             <ProductSectionsBuilder
               initialSections={product.product_sections ?? []}
               hiddenInputName="product_sections_json"
+              images={images}
+              onSectionsChange={setSectionsSnapshot}
             />
-
-            {/* Images */}
-            <Card title="Imágenes">
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/*"
-                multiple
-                className="hidden"
-                onChange={(e) => {
-                  void addFiles(e.target.files ?? []);
-                }}
-              />
-
-              {/* Drop zone */}
-              <div
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setDropOver(true);
-                }}
-                onDragLeave={() => setDropOver(false)}
-                onDrop={handleDrop}
-                onClick={() => fileRef.current?.click()}
-                className={clsx(
-                  "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed py-8 transition-colors",
-                  dropOver
-                    ? "border-[var(--color-primary)] bg-zinc-50"
-                    : "border-zinc-200 hover:border-zinc-400"
-                )}
-              >
-                <Upload
-                  className={clsx(
-                    "h-7 w-7 transition-colors",
-                    dropOver ? "text-[var(--color-primary)]" : "text-zinc-400"
-                  )}
-                />
-                <p className="text-sm font-medium text-zinc-600">
-                  Arrastra imágenes aquí o{" "}
-                  <span className="text-[var(--color-primary)]">haz clic para seleccionar</span>
-                </p>
-                <p className="text-xs text-zinc-400">
-                  PNG, JPG, WebP · puedes reordenar arrastrando
-                </p>
-              </div>
-
-              {/* Thumbnail grid */}
-              {images.length > 0 && (
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {images.map((img, i) => {
-                    const src = img.type === "existing" ? img.url : img.preview;
-                    return (
-                      <div
-                        key={img.id}
-                        draggable
-                        onDragStart={(e) => {
-                          e.dataTransfer.effectAllowed = "move";
-                          setDragSrcIdx(i);
-                        }}
-                        onDragOver={(e) => handleThumbDragOver(e, i)}
-                        onDragEnd={() => setDragSrcIdx(null)}
-                        className={clsx(
-                          "group relative h-[100px] w-[100px] shrink-0 cursor-grab overflow-hidden rounded-lg border-2 transition-all active:cursor-grabbing",
-                          dragSrcIdx === i
-                            ? "opacity-40 border-[var(--color-primary)]"
-                            : "border-zinc-200 hover:border-zinc-400"
-                        )}
-                      >
-                        {img.type === "new" || isAllowedImageSrc(src) ? (
-                          <Image
-                            src={src}
-                            alt={`Imagen ${i + 1}`}
-                            fill
-                            className="object-cover"
-                            sizes="80px"
-                            unoptimized={img.type === "new"}
-                          />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-zinc-100 to-zinc-200 text-[10px] text-zinc-400">
-                            Imagen no disponible
-                          </div>
-                        )}
-
-                        {/* Drag handle */}
-                        <div className="absolute left-1 top-1 hidden group-hover:flex">
-                          <GripVertical className="h-3.5 w-3.5 text-white drop-shadow" />
-                        </div>
-
-                        {/* Remove button */}
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            removeImage(img.id);
-                          }}
-                          className="absolute right-0.5 top-0.5 hidden h-5 w-5 items-center justify-center rounded-full bg-zinc-900/80 text-white group-hover:flex"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-
-                        {/* Principal badge */}
-                        {i === 0 && (
-                          <span className="absolute bottom-0 left-0 right-0 bg-zinc-900/70 py-0.5 text-center text-[9px] font-semibold uppercase tracking-wider text-white">
-                            Principal
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </Card>
           </div>
 
           {/* ── RIGHT COLUMN ── */}

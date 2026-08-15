@@ -2,10 +2,13 @@ import type {
   BeforeAfterData,
   BenefitsData,
   FaqData,
+  MeasurementsData,
   MediaStripData,
   ProductSection,
   ProductSectionType,
   TestimonialsData,
+  UsageData,
+  VersatilityData,
   VisualSequenceData,
 } from "./types";
 
@@ -25,12 +28,25 @@ function genId(): string {
 export function defaultBenefitsData(): BenefitsData {
   return {
     heading: "Beneficios",
+    image_url: "",
     items: [
       { icon: "shield", title: "Calidad verificada", description: "Edita este texto con lo que respalda a tu producto." },
       { icon: "truck", title: "Despacho a domicilio", description: "Coordinamos el envío según la información del checkout." },
       { icon: "sparkles", title: "Pensado para tu rutina", description: "Describe aquí cómo se integra a tu día a día." },
     ],
   };
+}
+
+export function defaultUsageData(): UsageData {
+  return { heading: "Cómo usarlo", image_url: "", alt: "" };
+}
+
+export function defaultMeasurementsData(): MeasurementsData {
+  return { heading: "Medidas", image_url: "", alt: "" };
+}
+
+export function defaultVersatilityData(): VersatilityData {
+  return { heading: "Versatilidad", image_url: "", alt: "" };
 }
 
 export function defaultMediaStripData(): MediaStripData {
@@ -107,6 +123,12 @@ export function createNewSection(
       return { ...base, type: "before_after", data: defaultBeforeAfterData() };
     case "visual_sequence":
       return { ...base, type: "visual_sequence", data: defaultVisualSequenceData() };
+    case "usage":
+      return { ...base, type: "usage", data: defaultUsageData() };
+    case "measurements":
+      return { ...base, type: "measurements", data: defaultMeasurementsData() };
+    case "versatility":
+      return { ...base, type: "versatility", data: defaultVersatilityData() };
     default: {
       const _exhaustive: never = type;
       throw new Error(`Tipo de sección desconocido: ${String(_exhaustive)}`);

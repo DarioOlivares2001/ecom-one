@@ -8,11 +8,13 @@ import {
   type BenefitsData,
 } from "@/lib/product/sections/types";
 
+import { ImagePicker } from "../ImagePicker";
 import { inputCls, labelCls, textareaCls } from "../shared";
 
 interface BenefitsEditorProps {
   data: BenefitsData;
   onChange: (next: BenefitsData) => void;
+  images: string[];
 }
 
 const ICON_LABELS: Record<(typeof BENEFIT_ICONS)[number], string> = {
@@ -31,7 +33,7 @@ const ICON_LABELS: Record<(typeof BENEFIT_ICONS)[number], string> = {
 const MIN_ITEMS = 1;
 const MAX_ITEMS = 6;
 
-export function BenefitsEditor({ data, onChange }: BenefitsEditorProps) {
+export function BenefitsEditor({ data, onChange, images }: BenefitsEditorProps) {
   const items = data.items ?? [];
 
   function patch(next: Partial<BenefitsData>) {
@@ -78,6 +80,14 @@ export function BenefitsEditor({ data, onChange }: BenefitsEditorProps) {
           maxLength={80}
         />
       </div>
+
+      <ImagePicker
+        label="Imagen principal (opcional)"
+        images={images}
+        value={data.image_url}
+        onChange={(url) => patch({ image_url: url })}
+        helperText="Se muestra sobre las tarjetas de beneficios."
+      />
 
       <div className="flex flex-col gap-3">
         {items.map((item, i) => (

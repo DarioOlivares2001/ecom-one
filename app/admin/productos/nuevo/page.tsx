@@ -1,17 +1,15 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import Link from "next/link";
-import { ArrowLeft, Plus, X, Upload, GripVertical } from "lucide-react";
+import { ArrowLeft, Plus, X } from "lucide-react";
 import { clsx } from "clsx";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { toast } from "@/components/ui/Toast";
 import { createProductAction } from "./actions";
-import { compressImageIfNeeded } from "@/lib/images/compressImage";
 import {
   ADMIN_DEFAULT_LABEL,
   ADMIN_DEFAULT_MAX_PERCENT,
@@ -23,7 +21,10 @@ import {
   defaultVolumeDiscountStepRows,
   type VolumeDiscountStepRow,
 } from "@/components/admin/ProductVolumeDiscountSection";
+import { ProductMediaLibrary } from "@/components/admin/ProductMediaLibrary";
 import { ProductSectionsBuilder } from "@/components/admin/product-sections/ProductSectionsBuilder";
+import { findSectionsUsingImage } from "@/lib/product/sections/imageUsage";
+import type { ProductSectionList } from "@/lib/product/sections/types";
 
 // ─── Rich text editor (client-only) ──────────────────────────────────────────
 
@@ -49,7 +50,6 @@ function slugify(text: string) {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type ImageItem = { id: string; file: File; preview: string };
 type Variant = { name: string; values: string };
 type VariantRow = {
   optionValue: string;
@@ -93,7 +93,6 @@ function Card({
 
 export default function NuevoProductoPage() {
   const router = useRouter();
-  const fileRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
 
   // Form fields
@@ -114,10 +113,14 @@ export default function NuevoProductoPage() {
   const [quantityValues, setQuantityValues] = useState("");
   const [variantRows, setVariantRows] = useState<VariantRow[]>([]);
 
-  // Images
-  const [images, setImages] = useState<ImageItem[]>([]);
-  const [dropOver, setDropOver] = useState(false);
-  const [dragSrcIdx, setDragSrcIdx] = useState<number | null>(null);
+  // Biblioteca de imágenes del producto: ya son URLs reales de R2 (se suben al
+  // elegir el archivo, no al guardar el producto) — la comparten la galería y
+  // los selectores de imagen de "Bloques de la ficha".
+  const [images, setImages] = useState<string[]>([]);
+  const [imagesUploading, setImagesUploading] = useState(false);
+  // Espejo de solo lectura de los bloques modulares, solo para poder avisar
+  // "esta imagen se usa en..." al borrar de la biblioteca (ver ProductSectionsBuilder).
+  const [sectionsSnapshot, setSectionsSnapshot] = useState<ProductSectionList>([]);
 
   const [discountEnabled, setDiscountEnabled] = useState(false);
   const [discountMaxPercent, setDiscountMaxPercent] = useState(
@@ -125,12 +128,6 @@ export default function NuevoProductoPage() {
   );
   const [discountLabel, setDiscountLabel] = useState(ADMIN_DEFAULT_LABEL);
   const [discountSteps, setDiscountSteps] = useState<VolumeDiscountStepRow[]>([]);
-
-  // Revoke blob URLs on unmount
-  useEffect(() => {
-    return () => images.forEach((img) => URL.revokeObjectURL(img.preview));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // ── Form helpers ────────────────────────────────────────────────────────────
 
@@ -143,55 +140,6 @@ export default function NuevoProductoPage() {
     return (
       e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
     ) => setForm((f) => ({ ...f, [key]: e.target.value }));
-  }
-
-  // ── Image helpers ───────────────────────────────────────────────────────────
-
-  const addFiles = useCallback(async (files: FileList | File[]) => {
-    const valid = Array.from(files).filter((f) => f.type.startsWith("image/"));
-    if (!valid.length) return;
-    const processed = await Promise.all(valid.map((file) => compressImageIfNeeded(file)));
-    processed.forEach((p) => {
-      if (p.compressed) {
-        console.log("[image-compress] original:", p.originalSize, "compressed:", p.compressedSize, "reduction:", `${p.reducedPercent}%`);
-      }
-    });
-    setImages((prev) => [
-      ...prev,
-      ...processed.map((result) => ({
-        id: `${Date.now()}-${Math.random()}`,
-        file: result.file,
-        preview: URL.createObjectURL(result.file),
-      })),
-    ]);
-  }, []);
-
-  async function handleDrop(e: React.DragEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    setDropOver(false);
-    await addFiles(e.dataTransfer.files);
-  }
-
-  function removeImage(id: string) {
-    setImages((prev) => {
-      const item = prev.find((i) => i.id === id);
-      if (item) URL.revokeObjectURL(item.preview);
-      return prev.filter((i) => i.id !== id);
-    });
-  }
-
-  // Drag-to-reorder thumbnails
-  function handleThumbDragOver(e: React.DragEvent, toIdx: number) {
-    e.preventDefault();
-    if (dragSrcIdx === null || dragSrcIdx === toIdx) return;
-    setImages((prev) => {
-      const next = [...prev];
-      const [moved] = next.splice(dragSrcIdx, 1);
-      next.splice(toIdx, 0, moved);
-      return next;
-    });
-    setDragSrcIdx(toIdx);
   }
 
   // ── Variant helpers ─────────────────────────────────────────────────────────
@@ -275,6 +223,9 @@ export default function NuevoProductoPage() {
     if (!volumeCheck.ok) {
       return toast.error(volumeCheck.error);
     }
+    if (imagesUploading) {
+      return toast.error("Espera a que terminen de subirse las imágenes.");
+    }
 
     setLoading(true);
     try {
@@ -316,8 +267,8 @@ export default function NuevoProductoPage() {
             : []
         )
       );
-      fd.append("image_count", String(images.length));
-      images.forEach((img, i) => fd.append(`image_${i}`, img.file));
+      // Imágenes ya subidas a R2 (biblioteca de medios) — solo viajan sus URLs.
+      fd.append("images_json", JSON.stringify(images));
 
       // ── Bloques modulares ───────────────────────────────────────────────
       // El builder pinta un <input type="hidden" name="product_sections_json" />
@@ -355,9 +306,10 @@ export default function NuevoProductoPage() {
   const canSaveWithVariants = variantRows.some(
     (r) => r.active && Number(r.price) > 0
   );
-  const canSave = hasRealVariants
-    ? canSaveBase && canSaveWithVariants
-    : canSaveBase && Number(form.price) > 0;
+  const canSave =
+    (hasRealVariants
+      ? canSaveBase && canSaveWithVariants
+      : canSaveBase && Number(form.price) > 0) && !imagesUploading;
 
   return (
     <div>
@@ -422,117 +374,23 @@ export default function NuevoProductoPage() {
               </p>
             </Card>
 
+            {/* Biblioteca de imágenes del producto */}
+            <Card title="Biblioteca de imágenes del producto">
+              <ProductMediaLibrary
+                images={images}
+                onChange={setImages}
+                findUsage={(url) => findSectionsUsingImage(sectionsSnapshot, url)}
+                onUploadingChange={setImagesUploading}
+              />
+            </Card>
+
             {/* Bloques modulares (Fase 2B) */}
             <ProductSectionsBuilder
               initialSections={[]}
               hiddenInputName="product_sections_json"
+              images={images}
+              onSectionsChange={setSectionsSnapshot}
             />
-
-            {/* Images */}
-            <Card title="Imágenes">
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/*"
-                multiple
-                className="hidden"
-                onChange={(e) => {
-                  void addFiles(e.target.files ?? []);
-                }}
-              />
-
-              {/* Drop zone */}
-              <div
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setDropOver(true);
-                }}
-                onDragLeave={() => setDropOver(false)}
-                onDrop={handleDrop}
-                onClick={() => fileRef.current?.click()}
-                className={clsx(
-                  "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed py-8 transition-colors",
-                  dropOver
-                    ? "border-[var(--color-primary)] bg-zinc-50"
-                    : "border-zinc-200 hover:border-zinc-400"
-                )}
-              >
-                <Upload
-                  className={clsx(
-                    "h-7 w-7 transition-colors",
-                    dropOver ? "text-[var(--color-primary)]" : "text-zinc-400"
-                  )}
-                />
-                <p className="text-sm font-medium text-zinc-600">
-                  Arrastra imágenes aquí o{" "}
-                  <span className="text-[var(--color-primary)]">
-                    haz clic para seleccionar
-                  </span>
-                </p>
-                <p className="text-xs text-zinc-400">
-                  PNG, JPG, WebP · múltiples archivos · se suben al bucket
-                  &ldquo;products&rdquo;
-                </p>
-              </div>
-
-              {/* Thumbnail grid */}
-              {images.length > 0 && (
-                <div className="mt-4 grid grid-cols-4 gap-2 sm:grid-cols-5 md:grid-cols-6">
-                  {images.map((img, i) => (
-                    <div
-                      key={img.id}
-                      draggable
-                      onDragStart={(e) => {
-                        e.dataTransfer.effectAllowed = "move";
-                        setDragSrcIdx(i);
-                      }}
-                      onDragOver={(e) => handleThumbDragOver(e, i)}
-                      onDragEnd={() => setDragSrcIdx(null)}
-                      className={clsx(
-                        "group relative aspect-square cursor-grab overflow-hidden rounded-lg border-2 transition-all active:cursor-grabbing",
-                        dragSrcIdx === i
-                          ? "opacity-40 border-[var(--color-primary)]"
-                          : "border-zinc-200 hover:border-zinc-400"
-                      )}
-                    >
-                      <Image
-                        src={img.preview}
-                        alt={`Imagen ${i + 1}`}
-                        fill
-                        className="object-cover"
-                        sizes="80px"
-                        unoptimized
-                      />
-
-                      {/* Drag handle */}
-                      <div className="absolute left-1 top-1 hidden group-hover:flex">
-                        <GripVertical className="h-3.5 w-3.5 text-white drop-shadow" />
-                      </div>
-
-                      {/* Remove button */}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          removeImage(img.id);
-                        }}
-                        className="absolute right-0.5 top-0.5 hidden h-5 w-5 items-center justify-center rounded-full bg-zinc-900/80 text-white group-hover:flex"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-
-                      {/* Principal badge */}
-                      {i === 0 && (
-                        <span className="absolute bottom-0 left-0 right-0 bg-zinc-900/70 py-0.5 text-center text-[9px] font-semibold uppercase tracking-wider text-white">
-                          Principal
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </Card>
           </div>
 
           {/* ── RIGHT COLUMN ── */}

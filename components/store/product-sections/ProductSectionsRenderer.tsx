@@ -6,6 +6,7 @@ import { BeforeAfterSection } from "./BeforeAfterSection";
 import { BenefitsSection } from "./BenefitsSection";
 import { FaqSection } from "./FaqSection";
 import { MediaStripSection } from "./MediaStripSection";
+import { SingleImageSection } from "./SingleImageSection";
 import { TestimonialsSection } from "./TestimonialsSection";
 import { VisualSequenceSection } from "./VisualSequenceSection";
 
@@ -43,6 +44,18 @@ export function ProductSectionsRenderer({ sections }: ProductSectionsRendererPro
             return <BeforeAfterSection key={section.id} data={section.data} />;
           case "visual_sequence":
             return <VisualSequenceSection key={section.id} data={section.data} />;
+          case "usage":
+            return (
+              <SingleImageSection key={section.id} data={section.data} fallbackEyebrow="Cómo usarlo" />
+            );
+          case "measurements":
+            return (
+              <SingleImageSection key={section.id} data={section.data} fallbackEyebrow="Medidas" />
+            );
+          case "versatility":
+            return (
+              <SingleImageSection key={section.id} data={section.data} fallbackEyebrow="Versatilidad" />
+            );
           default: {
             // Garantía de exhaustividad para futuras secciones nuevas.
             const _exhaustive: never = section;
