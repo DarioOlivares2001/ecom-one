@@ -3,7 +3,7 @@
 import type { MeasurementsData, UsageData, VersatilityData } from "@/lib/product/sections/types";
 
 import { ImagePicker } from "../ImagePicker";
-import { inputCls, labelCls } from "../shared";
+import { inputCls, labelCls, textareaCls } from "../shared";
 
 type SingleImageData = UsageData | MeasurementsData | VersatilityData;
 
@@ -42,6 +42,18 @@ export function SingleImageEditor({
         />
       </div>
 
+      <div className="flex flex-col gap-1.5">
+        <label className={labelCls}>Texto de la sección (opcional)</label>
+        <textarea
+          className={textareaCls}
+          value={data.description ?? ""}
+          rows={5}
+          maxLength={2000}
+          onChange={(e) => patch({ description: e.target.value })}
+          placeholder="Copy comercial visible en la ficha. Se respetan los saltos de línea."
+        />
+      </div>
+
       <ImagePicker
         label="Imagen de la sección"
         images={images}
@@ -58,6 +70,9 @@ export function SingleImageEditor({
           placeholder="Descripción para accesibilidad"
           maxLength={180}
         />
+        <p className="text-[11px] text-zinc-500">
+          Describe la imagen para accesibilidad; no se muestra como texto comercial.
+        </p>
       </div>
     </div>
   );

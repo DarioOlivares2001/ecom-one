@@ -81,6 +81,18 @@ export function BenefitsEditor({ data, onChange, images }: BenefitsEditorProps) 
         />
       </div>
 
+      <div className="flex flex-col gap-1.5">
+        <label className={labelCls}>Texto de la sección (opcional)</label>
+        <textarea
+          className={textareaCls}
+          value={data.description ?? ""}
+          rows={4}
+          maxLength={2000}
+          onChange={(e) => patch({ description: e.target.value })}
+          placeholder="Texto introductorio antes de la imagen y las tarjetas. Se respetan los saltos de línea."
+        />
+      </div>
+
       <ImagePicker
         label="Imagen principal (opcional)"
         images={images}
@@ -88,6 +100,22 @@ export function BenefitsEditor({ data, onChange, images }: BenefitsEditorProps) 
         onChange={(url) => patch({ image_url: url })}
         helperText="Se muestra sobre las tarjetas de beneficios."
       />
+
+      {data.image_url && (
+        <div className="flex flex-col gap-1.5">
+          <label className={labelCls}>Texto alternativo (alt, opcional)</label>
+          <input
+            className={inputCls}
+            value={data.alt ?? ""}
+            onChange={(e) => patch({ alt: e.target.value })}
+            placeholder="Descripción para accesibilidad"
+            maxLength={180}
+          />
+          <p className="text-[11px] text-zinc-500">
+            Describe la imagen para accesibilidad; no se muestra como texto comercial.
+          </p>
+        </div>
+      )}
 
       <div className="flex flex-col gap-3">
         {items.map((item, i) => (

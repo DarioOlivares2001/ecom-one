@@ -24,8 +24,15 @@ export function SingleImageSection({ data, fallbackEyebrow }: SingleImageSection
   const imageUrl = data.image_url?.trim();
   if (!imageUrl) return null;
 
+  const description = data.description?.trim();
+
   return (
     <SectionContainer heading={data.heading} eyebrow={data.heading ? undefined : fallbackEyebrow}>
+      {description && (
+        <p className="mb-5 whitespace-pre-line text-sm leading-relaxed text-[var(--color-text-muted)] sm:text-base">
+          {description}
+        </p>
+      )}
       <motion.div
         initial={{ opacity: 0, y: 18 }}
         whileInView={{ opacity: 1, y: 0 }}

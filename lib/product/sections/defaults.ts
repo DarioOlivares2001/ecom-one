@@ -28,7 +28,9 @@ function genId(): string {
 export function defaultBenefitsData(): BenefitsData {
   return {
     heading: "Beneficios",
+    description: "",
     image_url: "",
+    alt: "",
     items: [
       { icon: "shield", title: "Calidad verificada", description: "Edita este texto con lo que respalda a tu producto." },
       { icon: "truck", title: "Despacho a domicilio", description: "Coordinamos el envío según la información del checkout." },
@@ -38,19 +40,20 @@ export function defaultBenefitsData(): BenefitsData {
 }
 
 export function defaultUsageData(): UsageData {
-  return { heading: "Cómo usarlo", image_url: "", alt: "" };
+  return { heading: "Cómo usarlo", description: "", image_url: "", alt: "" };
 }
 
 export function defaultMeasurementsData(): MeasurementsData {
-  return { heading: "Medidas", image_url: "", alt: "" };
+  return { heading: "Medidas", description: "", image_url: "", alt: "" };
 }
 
 export function defaultVersatilityData(): VersatilityData {
-  return { heading: "Versatilidad", image_url: "", alt: "" };
+  return { heading: "Versatilidad", description: "", image_url: "", alt: "" };
 }
 
 export function defaultMediaStripData(): MediaStripData {
   return {
+    description: "",
     image_url: "",
     alt: "",
     caption: "",

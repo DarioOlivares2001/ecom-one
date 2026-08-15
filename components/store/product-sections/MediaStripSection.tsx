@@ -21,9 +21,16 @@ export function MediaStripSection({ data }: MediaStripSectionProps) {
 
   const aspectClass = ASPECT_CLASS[data.aspect] ?? ASPECT_CLASS["16/9"];
 
+  const description = data.description?.trim();
+
   return (
     <SectionContainer bare>
       <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+        {description && (
+          <p className="mb-5 whitespace-pre-line text-sm leading-relaxed text-[var(--color-text-muted)] sm:text-base">
+            {description}
+          </p>
+        )}
         <motion.figure
           initial={{ opacity: 0, y: 18 }}
           whileInView={{ opacity: 1, y: 0 }}

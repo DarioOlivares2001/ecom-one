@@ -42,8 +42,12 @@ export type MediaStripAspect = (typeof MEDIA_STRIP_ASPECTS)[number];
 
 export const benefitsDataSchema = z.object({
   heading: z.string().trim().max(80).optional(),
+  /** Texto visible introductorio de toda la sección, antes de imagen/tarjetas. Distinto de `items[].description`. */
+  description: z.string().trim().max(2000).optional(),
   /** Imagen principal opcional de la sección, elegida desde la biblioteca del producto. */
   image_url: z.string().url().or(z.literal("")).default(""),
+  /** Solo accesibilidad (atributo `alt` de la imagen) — nunca se muestra como texto comercial. */
+  alt: z.string().trim().max(180).optional(),
   items: z.array(benefitItemSchema).min(1).max(6),
 });
 
@@ -55,7 +59,10 @@ export const benefitsDataSchema = z.object({
 function singleImageDataSchema() {
   return z.object({
     heading: z.string().trim().max(80).optional(),
+    /** Texto comercial visible, multilínea. Distinto de `alt` (accesibilidad, nunca se muestra). */
+    description: z.string().trim().max(2000).optional(),
     image_url: z.string().url().or(z.literal("")).default(""),
+    /** Solo accesibilidad (atributo `alt` de la imagen) — nunca se muestra como texto comercial. */
     alt: z.string().trim().max(180).optional(),
   });
 }
@@ -65,7 +72,10 @@ export const measurementsDataSchema = singleImageDataSchema();
 export const versatilityDataSchema = singleImageDataSchema();
 
 export const mediaStripDataSchema = z.object({
+  /** Texto comercial visible, multilínea. Distinto de `caption` (leyenda pequeña bajo la imagen) y de `alt` (accesibilidad). */
+  description: z.string().trim().max(2000).optional(),
   image_url: z.string().url().or(z.literal("")).default(""),
+  /** Solo accesibilidad (atributo `alt` de la imagen) — nunca se muestra como texto comercial. */
   alt: z.string().trim().max(180).optional(),
   caption: z.string().trim().max(140).optional(),
   aspect: z.enum(MEDIA_STRIP_ASPECTS).default("16/9"),

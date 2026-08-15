@@ -15,15 +15,21 @@ export function BenefitsSection({ data }: BenefitsSectionProps) {
   if (!data.items?.length) return null;
 
   const imageUrl = data.image_url?.trim();
+  const description = data.description?.trim();
 
   return (
     <SectionContainer heading={data.heading} eyebrow={data.heading ? undefined : "Beneficios"}>
+      {description && (
+        <p className="mb-5 whitespace-pre-line text-sm leading-relaxed text-[var(--color-text-muted)] sm:text-base">
+          {description}
+        </p>
+      )}
       {imageUrl && (
         <div className="mb-5 overflow-hidden rounded-[var(--radius-lg)] border border-zinc-200 bg-zinc-100">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={imageUrl}
-            alt={data.heading ?? ""}
+            alt={data.alt ?? data.heading ?? ""}
             className="block w-full"
             loading="lazy"
             decoding="async"
