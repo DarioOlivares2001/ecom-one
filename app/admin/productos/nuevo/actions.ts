@@ -5,6 +5,7 @@ import { getAdminSessionFromCookies } from "@/lib/admin/session";
 import {
   createProduct,
   deleteProductHard,
+  getProductById,
   restoreProduct,
   softDeleteProduct,
   updateProduct,
@@ -31,10 +32,20 @@ export async function createProductAction(
 
   const hasVariants = formData.get("has_variants") === "true";
 
-  // ── Imágenes (ya subidas a R2 por la biblioteca de medios) ───────────────
-  const imagesParsed = parseImagesFromFormData(formData);
+  // ── Imágenes (ya subidas a R2) ────────────────────────────────────────────
+  // `images`: galería pública seleccionada. `product_media`: biblioteca completa.
+  const imagesParsed = parseImagesFromFormData(formData, "images_json");
   if (!imagesParsed.ok) return { error: imagesParsed.error };
   const images = imagesParsed.images;
+
+  const productMediaParsed = parseImagesFromFormData(formData, "product_media_json");
+  if (!productMediaParsed.ok) return { error: productMediaParsed.error };
+  const productMedia = productMediaParsed.images;
+
+  const active = formData.get("active") === "true";
+  if (active && images.length === 0) {
+    return { error: "Un producto activo necesita al menos una imagen en la galería principal." };
+  }
 
   // ── Parse variants ────────────────────────────────────────
   const variantsRaw = formData.get("variants") as string;
@@ -169,10 +180,11 @@ export async function createProductAction(
       stock: baseStock,
       category: normalizedCategory || null,
       images,
+      product_media: productMedia,
       variants: hasVariants ? null : variants,
       has_variants: hasVariants,
       options: hasVariants ? options : null,
-      active: formData.get("active") === "true",
+      active,
       product_sections: sectionsParsed.data,
       dropi_product_url: dropiValidation.url,
       ...volumeFields,
@@ -229,10 +241,20 @@ export async function updateProductAction(
 
   const hasVariants = formData.get("has_variants") === "true";
 
-  // ── Imágenes (ya subidas a R2 por la biblioteca de medios) ───────────────
-  const imagesParsed = parseImagesFromFormData(formData);
+  // ── Imágenes (ya subidas a R2) ────────────────────────────────────────────
+  // `images`: galería pública seleccionada. `product_media`: biblioteca completa.
+  const imagesParsed = parseImagesFromFormData(formData, "images_json");
   if (!imagesParsed.ok) return { error: imagesParsed.error };
   const images = imagesParsed.images;
+
+  const productMediaParsed = parseImagesFromFormData(formData, "product_media_json");
+  if (!productMediaParsed.ok) return { error: productMediaParsed.error };
+  const productMedia = productMediaParsed.images;
+
+  const active = formData.get("active") === "true";
+  if (active && images.length === 0) {
+    return { error: "Un producto activo necesita al menos una imagen en la galería principal." };
+  }
 
   // ── Parse variants ────────────────────────────────────────
   const variantsRaw = formData.get("variants") as string;
@@ -366,10 +388,11 @@ export async function updateProductAction(
       stock: baseStock,
       category: normalizedCategory || null,
       images,
+      product_media: productMedia,
       variants: hasVariants ? null : variants,
       has_variants: hasVariants,
       options: hasVariants ? options : null,
-      active: formData.get("active") === "true",
+      active,
       product_sections: sectionsParsed.data,
       dropi_product_url: dropiValidation.url,
       ...volumeFields,
@@ -446,6 +469,15 @@ export async function restoreProductAction(id: string): Promise<{ error?: string
     return { error: "No autorizado." };
   }
   try {
+    // Reactivar vuelve a poner `active: true` — respeta la misma regla que
+    // crear/editar: un producto activo necesita al menos una imagen de galería.
+    const product = await getProductById(id);
+    if (product && product.images.length === 0) {
+      return {
+        error:
+          "Este producto no tiene imágenes en la galería principal. Agrégalas editándolo antes de reactivarlo.",
+      };
+    }
     await restoreProduct(id);
   } catch (error) {
     return { error: error instanceof Error ? error.message : "No se pudo restaurar el producto." };

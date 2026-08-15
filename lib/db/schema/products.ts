@@ -26,7 +26,18 @@ export const products = pgTable(
 
     stock: integer("stock").notNull().default(0),
 
+    /** Galería pública seleccionada (carrusel de la ficha, tarjetas, catálogo). Subconjunto ordenado de `productMedia`. */
     images: text("images")
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    /**
+     * Biblioteca de medios del producto: todas las imágenes subidas, con o sin
+     * uso actual. Fuente de la que se eligen tanto `images` (galería pública)
+     * como las imágenes de los bloques modulares en `productSections`. Nunca
+     * se renderiza completa en el storefront — ver `ImagePicker`/`ProductGallerySelector`.
+     */
+    productMedia: text("product_media")
       .array()
       .notNull()
       .default(sql`'{}'::text[]`),

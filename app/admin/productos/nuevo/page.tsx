@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -21,8 +21,12 @@ import {
   defaultVolumeDiscountStepRows,
   type VolumeDiscountStepRow,
 } from "@/components/admin/ProductVolumeDiscountSection";
+import { ProductGallerySelector } from "@/components/admin/ProductGallerySelector";
 import { ProductMediaLibrary } from "@/components/admin/ProductMediaLibrary";
-import { ProductSectionsBuilder } from "@/components/admin/product-sections/ProductSectionsBuilder";
+import {
+  ProductSectionsBuilder,
+  type ProductSectionsBuilderHandle,
+} from "@/components/admin/product-sections/ProductSectionsBuilder";
 import { findSectionsUsingImage } from "@/lib/product/sections/imageUsage";
 import type { ProductSectionList } from "@/lib/product/sections/types";
 
@@ -113,14 +117,32 @@ export default function NuevoProductoPage() {
   const [quantityValues, setQuantityValues] = useState("");
   const [variantRows, setVariantRows] = useState<VariantRow[]>([]);
 
-  // Biblioteca de imágenes del producto: ya son URLs reales de R2 (se suben al
-  // elegir el archivo, no al guardar el producto) — la comparten la galería y
-  // los selectores de imagen de "Bloques de la ficha".
+  // Biblioteca de medios: TODAS las imágenes subidas (URLs reales de R2, se
+  // suben al elegir el archivo, no al guardar el producto). Es la fuente para
+  // elegir tanto la galería pública como las imágenes de "Bloques de la
+  // ficha" — nunca se renderiza completa en el storefront.
+  const [productMedia, setProductMedia] = useState<string[]>([]);
+  // Galería pública: subconjunto ordenado de `productMedia`, elegido a mano.
+  // La primera imagen es la portada en catálogo/tarjetas/ficha.
   const [images, setImages] = useState<string[]>([]);
   const [imagesUploading, setImagesUploading] = useState(false);
   // Espejo de solo lectura de los bloques modulares, solo para poder avisar
   // "esta imagen se usa en..." al borrar de la biblioteca (ver ProductSectionsBuilder).
   const [sectionsSnapshot, setSectionsSnapshot] = useState<ProductSectionList>([]);
+  const sectionsBuilderRef = useRef<ProductSectionsBuilderHandle>(null);
+
+  function findMediaUsage(url: string) {
+    const refs: { id: string; label: string }[] = [];
+    if (images.includes(url)) refs.push({ id: "gallery", label: "Galería principal" });
+    refs.push(...findSectionsUsingImage(sectionsSnapshot, url));
+    return refs;
+  }
+
+  function handleDeleteMedia(url: string) {
+    setProductMedia((prev) => prev.filter((u) => u !== url));
+    setImages((prev) => prev.filter((u) => u !== url));
+    sectionsBuilderRef.current?.purgeImageReference(url);
+  }
 
   const [discountEnabled, setDiscountEnabled] = useState(false);
   const [discountMaxPercent, setDiscountMaxPercent] = useState(
@@ -226,6 +248,9 @@ export default function NuevoProductoPage() {
     if (imagesUploading) {
       return toast.error("Espera a que terminen de subirse las imágenes.");
     }
+    if (active && images.length === 0) {
+      return toast.error("Un producto activo necesita al menos una imagen en la galería principal.");
+    }
 
     setLoading(true);
     try {
@@ -267,8 +292,10 @@ export default function NuevoProductoPage() {
             : []
         )
       );
-      // Imágenes ya subidas a R2 (biblioteca de medios) — solo viajan sus URLs.
+      // Imágenes ya subidas a R2 — solo viajan sus URLs. `images` es la
+      // galería pública seleccionada; `product_media` es la biblioteca completa.
       fd.append("images_json", JSON.stringify(images));
+      fd.append("product_media_json", JSON.stringify(productMedia));
 
       // ── Bloques modulares ───────────────────────────────────────────────
       // El builder pinta un <input type="hidden" name="product_sections_json" />
@@ -309,7 +336,9 @@ export default function NuevoProductoPage() {
   const canSave =
     (hasRealVariants
       ? canSaveBase && canSaveWithVariants
-      : canSaveBase && Number(form.price) > 0) && !imagesUploading;
+      : canSaveBase && Number(form.price) > 0) &&
+    !imagesUploading &&
+    (!active || images.length > 0);
 
   return (
     <div>
@@ -374,21 +403,28 @@ export default function NuevoProductoPage() {
               </p>
             </Card>
 
-            {/* Biblioteca de imágenes del producto */}
-            <Card title="Biblioteca de imágenes del producto">
+            {/* Biblioteca de medios: todas las imágenes subidas, no es la galería pública */}
+            <Card title="Biblioteca de medios">
               <ProductMediaLibrary
-                images={images}
-                onChange={setImages}
-                findUsage={(url) => findSectionsUsingImage(sectionsSnapshot, url)}
+                images={productMedia}
+                onChange={setProductMedia}
+                findUsage={findMediaUsage}
+                onDelete={handleDeleteMedia}
                 onUploadingChange={setImagesUploading}
               />
             </Card>
 
+            {/* Galería principal del producto — obligatoria para activar */}
+            <Card title="Galería principal *">
+              <ProductGallerySelector library={productMedia} gallery={images} onChange={setImages} />
+            </Card>
+
             {/* Bloques modulares (Fase 2B) */}
             <ProductSectionsBuilder
+              ref={sectionsBuilderRef}
               initialSections={[]}
               hiddenInputName="product_sections_json"
-              images={images}
+              images={productMedia}
               onSectionsChange={setSectionsSnapshot}
             />
           </div>
@@ -621,6 +657,11 @@ export default function NuevoProductoPage() {
                   )}
                 </span>
               </button>
+              {active && images.length === 0 && (
+                <p className="mt-2 text-xs text-amber-600">
+                  Para activarlo agrega al menos una imagen en la Galería principal.
+                </p>
+              )}
             </Card>
 
             {/* Actions */}

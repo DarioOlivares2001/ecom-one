@@ -36,6 +36,13 @@
       "when": 1785762262704,
       "tag": "0004_add-dropi-product-url",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1786756633919,
+      "tag": "0005_add-product-media",
+      "breakpoints": true
     }
   ]
 }

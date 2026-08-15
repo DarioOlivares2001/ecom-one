@@ -23,7 +23,10 @@ export interface Product {
   compare_at_price: number | null;
   cost_price: number | null;
   stock: number;
+  /** Galería pública seleccionada (carrusel, tarjetas, catálogo) — subconjunto ordenado de `product_media`. */
   images: string[];
+  /** Biblioteca de medios: todas las imágenes subidas, usadas o no. Nunca se renderiza completa en el storefront. */
+  product_media: string[];
   category: string | null;
   tags: string[];
   variants: Json | null;

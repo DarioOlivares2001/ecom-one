@@ -18,6 +18,7 @@ export function mapProduct(row: ProductRow): Product {
     cost_price: row.costPrice,
     stock: row.stock,
     images: row.images,
+    product_media: row.productMedia,
     category: row.category,
     tags: row.tags ?? [],
     variants: row.variants as Product["variants"],
@@ -172,6 +173,7 @@ export interface ProductInsertInput {
   cost_price?: number | null;
   stock?: number;
   images?: string[];
+  product_media?: string[];
   category?: string | null;
   tags?: string[];
   has_variants?: boolean;
@@ -202,6 +204,7 @@ function toInsertValues(input: ProductInsertInput) {
     costPrice: input.cost_price ?? null,
     stock: input.stock ?? 0,
     images: input.images ?? [],
+    productMedia: input.product_media ?? [],
     category: input.category ?? null,
     tags: input.tags ?? [],
     hasVariants: input.has_variants ?? false,
@@ -230,6 +233,7 @@ function toUpdateValues(input: ProductUpdateInput) {
   if (input.cost_price !== undefined) values.costPrice = input.cost_price;
   if (input.stock !== undefined) values.stock = input.stock;
   if (input.images !== undefined) values.images = input.images;
+  if (input.product_media !== undefined) values.productMedia = input.product_media;
   if (input.category !== undefined) values.category = input.category;
   if (input.tags !== undefined) values.tags = input.tags;
   if (input.has_variants !== undefined) values.hasVariants = input.has_variants;

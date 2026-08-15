@@ -10,23 +10,30 @@ import { compressImageIfNeeded } from "@/lib/images/compressImage";
 import { uploadProductImage } from "@/lib/admin/uploadProductImage";
 import { LIBRARY_IMAGE_DRAG_MIME } from "./product-sections/ImagePicker";
 
-interface SectionUsageRef {
+interface UsageRef {
   id: string;
   label: string;
 }
 
 interface ProductMediaLibraryProps {
-  /** URLs ya subidas a R2, en el orden de la galería (`products.images`). */
+  /** Biblioteca completa de medios del producto (`product_media`) — no es la galería pública. */
   images: string[];
   /**
    * Mismo tipo que el setter de `useState<string[]>`: acepta un array nuevo o
    * un updater funcional. Se requiere la forma funcional porque varias subidas
    * pueden resolver en paralelo y cada una debe partir del estado más reciente,
    * no de la instantánea de `images` capturada cuando empezó su propia subida.
+   * Solo se usa para agregar (subida) y reordenar — el borrado pasa por `onDelete`.
    */
   onChange: Dispatch<SetStateAction<string[]>>;
-  /** Devuelve los bloques que usan una URL dada, para advertir antes de borrar. */
-  findUsage?: (url: string) => SectionUsageRef[];
+  /** Dónde se usa esta imagen (galería principal, bloques), para advertir antes de borrar. */
+  findUsage?: (url: string) => UsageRef[];
+  /**
+   * El padre decide qué hacer al confirmar el borrado: quitar de la biblioteca,
+   * de la galería si estaba seleccionada, y de cualquier bloque que la referencie.
+   * No borra el archivo físico en R2 — solo las referencias en la base de datos.
+   */
+  onDelete: (url: string) => void;
   /** Se avisa al padre mientras haya subidas en curso (para bloquear "Guardar"). */
   onUploadingChange?: (uploading: boolean) => void;
 }
@@ -37,6 +44,7 @@ export function ProductMediaLibrary({
   images,
   onChange,
   findUsage,
+  onDelete,
   onUploadingChange,
 }: ProductMediaLibraryProps) {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -85,10 +93,10 @@ export function ProductMediaLibrary({
     const usage = findUsage?.(url) ?? [];
     const message =
       usage.length > 0
-        ? `Esta imagen se usa en: ${usage.map((u) => u.label).join(", ")}.\n\n¿Eliminarla de la biblioteca de todas formas? Esos bloques quedarán sin imagen asignada.`
+        ? `Esta imagen se usa en: ${usage.map((u) => u.label).join(", ")}.\n\n¿Eliminarla de la biblioteca de todas formas? Se quitará de ahí también — no queda ninguna referencia rota.`
         : "¿Eliminar esta imagen de la biblioteca?";
     if (!confirm(message)) return;
-    onChange((prev) => prev.filter((u) => u !== url));
+    onDelete(url);
   }
 
   function handleThumbDragStart(e: React.DragEvent, idx: number, url: string) {
@@ -144,8 +152,8 @@ export function ProductMediaLibrary({
           <span className="text-[var(--color-primary)]">haz clic para seleccionar</span>
         </p>
         <p className="text-xs text-zinc-400">
-          PNG, JPG, WebP · múltiples archivos · quedan disponibles para la galería y para los
-          bloques de la ficha
+          PNG, JPG, WebP · múltiples archivos · no aparecen solas en la ficha pública: elígelas
+          para la galería o para un bloque más abajo
         </p>
       </div>
 
@@ -176,16 +184,10 @@ export function ProductMediaLibrary({
                   handleDelete(url);
                 }}
                 className="absolute right-0.5 top-0.5 hidden h-5 w-5 items-center justify-center rounded-full bg-zinc-900/80 text-white group-hover:flex"
-                aria-label="Eliminar imagen"
+                aria-label="Eliminar imagen de la biblioteca"
               >
                 <X className="h-3 w-3" />
               </button>
-
-              {i === 0 && (
-                <span className="absolute bottom-0 left-0 right-0 bg-zinc-900/70 py-0.5 text-center text-[9px] font-semibold uppercase tracking-wider text-white">
-                  Principal
-                </span>
-              )}
             </div>
           ))}
 
@@ -202,8 +204,8 @@ export function ProductMediaLibrary({
       )}
 
       <p className="text-[11px] text-zinc-500">
-        Reutiliza estas imágenes en &quot;Bloques de la ficha&quot; más abajo: elige de biblioteca o
-        arrastra una miniatura hacia el bloque.
+        Esto es solo la biblioteca. Elige imágenes desde aquí para la &quot;Galería principal&quot; o
+        para cualquier bloque de la ficha más abajo.
       </p>
     </div>
   );

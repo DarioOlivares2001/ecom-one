@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -24,8 +24,12 @@ import {
   defaultVolumeDiscountStepRows,
   type VolumeDiscountStepRow,
 } from "@/components/admin/ProductVolumeDiscountSection";
+import { ProductGallerySelector } from "@/components/admin/ProductGallerySelector";
 import { ProductMediaLibrary } from "@/components/admin/ProductMediaLibrary";
-import { ProductSectionsBuilder } from "@/components/admin/product-sections/ProductSectionsBuilder";
+import {
+  ProductSectionsBuilder,
+  type ProductSectionsBuilderHandle,
+} from "@/components/admin/product-sections/ProductSectionsBuilder";
 import { findSectionsUsingImage } from "@/lib/product/sections/imageUsage";
 import type { ProductSectionList } from "@/lib/product/sections/types";
 
@@ -99,6 +103,7 @@ type EditableProduct = {
   variants: Record<string, string[]> | null;
   options: Array<{ name: string; values: string[] }> | null;
   images: string[] | null;
+  product_media?: string[] | null;
   dropi_product_url?: string | null;
   discount_enabled?: boolean | null;
   discount_max_percent?: number | null;
@@ -200,14 +205,33 @@ export function EditProductoForm({
     }));
   });
 
-  // Biblioteca de imágenes del producto — arranca con las URLs ya guardadas;
+  // Biblioteca de medios — arranca con las URLs ya guardadas en `product_media`;
   // las que se agreguen en esta sesión ya llegan como URL real (se suben al
   // elegirlas, no al guardar el producto).
+  const [productMedia, setProductMedia] = useState<string[]>(
+    () => product.product_media ?? product.images ?? []
+  );
+  // Galería pública: subconjunto ordenado de `productMedia`. La primera
+  // imagen es la portada en catálogo/tarjetas/ficha.
   const [images, setImages] = useState<string[]>(() => product.images ?? []);
   const [imagesUploading, setImagesUploading] = useState(false);
   // Espejo de solo lectura de los bloques modulares, solo para poder avisar
   // "esta imagen se usa en..." al borrar de la biblioteca (ver ProductSectionsBuilder).
   const [sectionsSnapshot, setSectionsSnapshot] = useState<ProductSectionList>([]);
+  const sectionsBuilderRef = useRef<ProductSectionsBuilderHandle>(null);
+
+  function findMediaUsage(url: string) {
+    const refs: { id: string; label: string }[] = [];
+    if (images.includes(url)) refs.push({ id: "gallery", label: "Galería principal" });
+    refs.push(...findSectionsUsingImage(sectionsSnapshot, url));
+    return refs;
+  }
+
+  function handleDeleteMedia(url: string) {
+    setProductMedia((prev) => prev.filter((u) => u !== url));
+    setImages((prev) => prev.filter((u) => u !== url));
+    sectionsBuilderRef.current?.purgeImageReference(url);
+  }
 
   const [discountEnabled, setDiscountEnabled] = useState(product.discount_enabled === true);
   const [discountMaxPercent, setDiscountMaxPercent] = useState(
@@ -315,6 +339,9 @@ export function EditProductoForm({
     if (imagesUploading) {
       return toast.error("Espera a que terminen de subirse las imágenes.");
     }
+    if (active && images.length === 0) {
+      return toast.error("Un producto activo necesita al menos una imagen en la galería principal.");
+    }
 
     setLoading(true);
     try {
@@ -368,8 +395,10 @@ export function EditProductoForm({
         )
       );
 
-      // Imágenes ya subidas a R2 (biblioteca de medios) — solo viajan sus URLs.
+      // Imágenes ya subidas a R2 — solo viajan sus URLs. `images` es la
+      // galería pública seleccionada; `product_media` es la biblioteca completa.
       fd.append("images_json", JSON.stringify(images));
+      fd.append("product_media_json", JSON.stringify(productMedia));
 
       fd.append("discount_enabled", volumeCheck.data.discount_enabled ? "true" : "false");
       if (volumeCheck.data.discount_enabled) {
@@ -392,7 +421,8 @@ export function EditProductoForm({
 
   // ─────────────────────────────────────────────────────────────────────────────
 
-  const canSaveBase = !!form.name.trim() && !!form.slug.trim() && !imagesUploading;
+  const canSaveBase =
+    !!form.name.trim() && !!form.slug.trim() && !imagesUploading && (!active || images.length > 0);
   const canSaveWithVariants = variantRows.some((r) => r.active && Number(r.price) > 0);
   const canSave = hasRealVariants
     ? canSaveBase && canSaveWithVariants
@@ -457,21 +487,28 @@ export function EditProductoForm({
               </p>
             </Card>
 
-            {/* Biblioteca de imágenes del producto */}
-            <Card title="Biblioteca de imágenes del producto">
+            {/* Biblioteca de medios: todas las imágenes subidas, no es la galería pública */}
+            <Card title="Biblioteca de medios">
               <ProductMediaLibrary
-                images={images}
-                onChange={setImages}
-                findUsage={(url) => findSectionsUsingImage(sectionsSnapshot, url)}
+                images={productMedia}
+                onChange={setProductMedia}
+                findUsage={findMediaUsage}
+                onDelete={handleDeleteMedia}
                 onUploadingChange={setImagesUploading}
               />
             </Card>
 
+            {/* Galería principal del producto — obligatoria para activar */}
+            <Card title="Galería principal *">
+              <ProductGallerySelector library={productMedia} gallery={images} onChange={setImages} />
+            </Card>
+
             {/* Bloques modulares (Fase 2A) */}
             <ProductSectionsBuilder
+              ref={sectionsBuilderRef}
               initialSections={product.product_sections ?? []}
               hiddenInputName="product_sections_json"
-              images={images}
+              images={productMedia}
               onSectionsChange={setSectionsSnapshot}
             />
           </div>
@@ -693,6 +730,11 @@ export function EditProductoForm({
                   )}
                 </span>
               </button>
+              {active && images.length === 0 && (
+                <p className="mt-2 text-xs text-amber-600">
+                  Para activarlo agrega al menos una imagen en la Galería principal.
+                </p>
+              )}
             </Card>
 
             {/* Actions */}

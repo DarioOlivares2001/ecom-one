@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
 
 import {
   createNewSection,
   reindexSections,
 } from "@/lib/product/sections/defaults";
+import { purgeImageReference } from "@/lib/product/sections/imageUsage";
 import { parseProductSectionsLoose } from "@/lib/product/sections/parse";
 import type {
   BeforeAfterData,
@@ -32,12 +33,17 @@ import { TestimonialsEditor } from "./editors/TestimonialsEditor";
 import { VisualSequenceEditor } from "./editors/VisualSequenceEditor";
 import { SectionCard } from "./SectionCard";
 
+export interface ProductSectionsBuilderHandle {
+  /** Vacía toda referencia a `url` en los bloques (borrado en cascada desde la biblioteca de medios). */
+  purgeImageReference: (url: string) => void;
+}
+
 interface ProductSectionsBuilderProps {
   /** Valor inicial (puede ser cualquier JSON del JSONB en BD). */
   initialSections: unknown;
   /** Nombre del hidden input que se enviará en el FormData del form padre. */
   hiddenInputName: string;
-  /** Biblioteca de medios del producto (`products.images`), para los selectores de imagen de cada bloque. */
+  /** Biblioteca de medios del producto (`product_media`), para los selectores de imagen de cada bloque. */
   images: string[];
   /**
    * Espejo de solo lectura del estado interno hacia el padre — no cambia el
@@ -50,12 +56,13 @@ interface ProductSectionsBuilderProps {
 
 const MAX_SECTIONS = 20;
 
-export function ProductSectionsBuilder({
-  initialSections,
-  hiddenInputName,
-  images,
-  onSectionsChange,
-}: ProductSectionsBuilderProps) {
+export const ProductSectionsBuilder = forwardRef<
+  ProductSectionsBuilderHandle,
+  ProductSectionsBuilderProps
+>(function ProductSectionsBuilder(
+  { initialSections, hiddenInputName, images, onSectionsChange },
+  ref,
+) {
   // El componente es UNCONTROLLED: parseamos `initialSections` una sola vez al
   // montar para que re-renders del padre (cambios en otros campos del form) no
   // sobreescriban el estado local del usuario mientras edita los bloques.
@@ -77,6 +84,16 @@ export function ProductSectionsBuilder({
     onSectionsChange?.(sections);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sections]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      purgeImageReference: (url: string) => {
+        setSections((prev) => reindexSections(purgeImageReference(prev, url)));
+      },
+    }),
+    [],
+  );
 
   function commit(next: ProductSectionList) {
     setSections(reindexSections(next));
@@ -265,4 +282,4 @@ export function ProductSectionsBuilder({
       <input type="hidden" name={hiddenInputName} value={serialized} />
     </section>
   );
-}
+});
