@@ -15,10 +15,8 @@ import {
 import { confirmPaidOrderAndDecrementStock } from "@/lib/orders/confirmPaidAndDecrementStock";
 import { revalidateAfterStockChange } from "@/lib/orders/revalidateAfterStockChange";
 import { sendMetaCapiPurchase } from "@/lib/pixel/capi";
+import { FLOW_API_KEY, FLOW_API_URL, FLOW_SECRET_KEY } from "@/lib/flow/config";
 
-const FLOW_API_URL = process.env.FLOW_API_URL ?? "https://sandbox.flow.cl/api";
-const FLOW_API_KEY = process.env.FLOW_API_KEY ?? "";
-const FLOW_SECRET_KEY = process.env.FLOW_SECRET_KEY ?? "";
 const FLOW_MOCK =
   process.env.FLOW_MOCK === "true" || FLOW_API_KEY.toLowerCase().includes("sandbox");
 

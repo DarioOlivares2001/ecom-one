@@ -11,10 +11,7 @@ import { revalidateAfterStockChange } from "@/lib/orders/revalidateAfterStockCha
 import { sendOrderNotification } from "@/lib/email/sendOrderNotification";
 import { sendMetaCapiPurchase } from "@/lib/pixel/capi";
 import { getPublicSiteUrl } from "@/lib/site-url";
-
-const FLOW_API_URL = process.env.FLOW_API_URL ?? "https://sandbox.flow.cl/api";
-const FLOW_API_KEY = process.env.FLOW_API_KEY ?? "";
-const FLOW_SECRET_KEY = process.env.FLOW_SECRET_KEY ?? "";
+import { FLOW_API_KEY, FLOW_API_URL, FLOW_SECRET_KEY } from "@/lib/flow/config";
 
 /**
  * HMAC-SHA256 sobre claves ordenadas (mismo esquema que /payment/create).

@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { getOrderByOrderNumber, updateOrderIfStatus } from "@/lib/db/repositories/orders";
-
-const FLOW_API_URL = process.env.FLOW_API_URL ?? "https://sandbox.flow.cl/api";
-const FLOW_API_KEY = process.env.FLOW_API_KEY ?? "";
-const FLOW_SECRET_KEY = process.env.FLOW_SECRET_KEY ?? "";
+import { FLOW_API_KEY, FLOW_API_URL, FLOW_SECRET_KEY } from "@/lib/flow/config";
 
 function sign(params: Record<string, string>, secret: string): string {
   const message = Object.keys(params)
