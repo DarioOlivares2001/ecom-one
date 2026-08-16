@@ -93,9 +93,18 @@ async function bumpAndUpdateCliente(
 }
 
 /**
- * Tras crear un pedido: crea o actualiza `public.clientes` con el cliente admin.
- * No modifica `password_hash` ni `registered_at`. Métricas: +1 pedido, suma `total_spent`, `last_order_at`.
+ * Crea o actualiza `public.clientes` con el cliente admin. No modifica
+ * `password_hash` ni `registered_at`. Métricas: +1 pedido, suma `total_spent`, `last_order_at`.
  * Fallos se registran con `[cliente-upsert]` y no deben propagarse al flujo de pago.
+ *
+ * IMPORTANTE: llamar solo cuando el pago de la orden ya está confirmado
+ * (orden `paid`), nunca al crearla. Los `total_orders`/`total_spent` de un
+ * cliente deben reflejar únicamente pedidos realmente pagados — hoy el único
+ * caller correcto es `lib/orders/verifyFlowPayment.ts` (confirmación real,
+ * vía webhook o verificación directa) y el branch mock de
+ * `app/api/flow/create` (que crea la orden ya `paid`, pago simulado
+ * instantáneo). Si se llama antes de confirmar el pago, un cliente puede
+ * quedar con pedidos "fantasma" contados que nunca se pagaron.
  */
 export async function upsertClienteFromOrder(
   customer: ClienteCheckoutPayload,

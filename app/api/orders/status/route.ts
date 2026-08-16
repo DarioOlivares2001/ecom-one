@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOrderByOrderNumber } from "@/lib/db/repositories/orders";
+import { verifyFlowPaymentForOrder } from "@/lib/orders/verifyFlowPayment";
 
 export const dynamic = "force-dynamic";
 
@@ -16,15 +17,21 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Orden no encontrada" }, { status: 404 });
     }
 
-    // display_code/items solo se usan para el Purchase del navegador
-    // (deduplicado por event_id con el Purchase de servidor; el value lo
-    // calcula pixelEvents.purchase con sumProductsValue a partir de items);
-    // no se exponen salvo cuando la orden ya está pagada. Se manda solo el
-    // subconjunto de campos que el cliente realmente usa (product_id, price,
-    // quantity) — nunca el objeto crudo de la línea, que puede traer campos
-    // de uso interno del admin (ej. dropi_product_url) que no deben llegar
-    // al navegador del cliente.
-    const isPaid = data.status === "paid";
+    // Verificación directa con Flow en servidor: el navegador SÍ puede llegar
+    // a esta ruta (es el propio cliente quien la llama al pollear la página
+    // de confirmación), a diferencia del webhook de Flow, que en local no
+    // puede alcanzar `localhost`. Si la orden sigue `awaiting_payment` y tiene
+    // `flow_token`, consultamos a Flow acá mismo antes de responder — así el
+    // pago se confirma igual aunque el webhook nunca llegue.
+    let effectiveStatus = data.status;
+    let needsManualReview = false;
+    if (data.status === "awaiting_payment") {
+      const outcome = await verifyFlowPaymentForOrder(data);
+      effectiveStatus = outcome.status;
+      needsManualReview = outcome.needsManualReview;
+    }
+
+    const isPaid = effectiveStatus === "paid";
     const rawItems = Array.isArray(data.items) ? data.items : [];
     const safeItems = rawItems.map((item) => {
       const i = (item ?? {}) as Record<string, unknown>;
@@ -35,13 +42,9 @@ export async function GET(request: NextRequest) {
       };
     });
     return NextResponse.json({
-      status: data.status as string,
-      ...(isPaid
-        ? {
-            displayCode: data.display_code ?? null,
-            items: safeItems,
-          }
-        : {}),
+      status: effectiveStatus as string,
+      ...(needsManualReview ? { needsManualReview: true } : {}),
+      ...(isPaid ? { displayCode: data.display_code ?? null, items: safeItems } : {}),
     });
   } catch (err) {
     console.error("[orders/status] excepción:", err);

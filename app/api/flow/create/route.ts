@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import crypto from "crypto";
 import type { Json } from "@/lib/db/types";
 import type { OrderInsertInput } from "@/lib/db/repositories/orders";
 import { createOrder, updateOrder, updateOrderByOrderNumber } from "@/lib/db/repositories/orders";
@@ -16,19 +15,10 @@ import { confirmPaidOrderAndDecrementStock } from "@/lib/orders/confirmPaidAndDe
 import { revalidateAfterStockChange } from "@/lib/orders/revalidateAfterStockChange";
 import { sendMetaCapiPurchase } from "@/lib/pixel/capi";
 import { FLOW_API_KEY, FLOW_API_URL, FLOW_SECRET_KEY } from "@/lib/flow/config";
+import { sign } from "@/lib/flow/sign";
 
 const FLOW_MOCK =
   process.env.FLOW_MOCK === "true" || FLOW_API_KEY.toLowerCase().includes("sandbox");
-
-// ─── HMAC-SHA256 signing ──────────────────────────────────────────────────────
-
-function sign(params: Record<string, string>, secret: string): string {
-  const message = Object.keys(params)
-    .sort()
-    .map((k) => `${k}${params[k]}`)
-    .join("");
-  return crypto.createHmac("sha256", secret).update(message).digest("hex");
-}
 
 type CheckoutCustomer = {
   name?: string;
@@ -372,25 +362,12 @@ export async function POST(request: NextRequest) {
       items,
     });
 
-    try {
-      await upsertClienteFromOrder(
-        {
-          name: customer.name ?? "",
-          email: customer.email,
-          phone: customer.phone ?? null,
-          address: customer.address,
-          city: customer.city,
-          region: customer.region,
-        },
-        total
-      );
-    } catch (e) {
-      console.error("[cliente-upsert] error", {
-        phase: "live_route",
-        email: customer.email,
-        error: String(e),
-      });
-    }
+    // No se llama a upsertClienteFromOrder acá: esta orden todavía no está
+    // pagada (recién se creó en `awaiting_payment`, ni siquiera se llamó a
+    // Flow todavía). Contar el pedido y sumar al total gastado del cliente
+    // solo debe pasar cuando el pago se confirma de verdad — eso ahora vive
+    // en `lib/orders/verifyFlowPayment.ts`, compartido por el webhook y la
+    // verificación directa en el retorno del navegador.
 
     const displayCodeLive = generateDisplayCode(orderNumberLive, settings.order_number_offset);
     const commerceOrder = displayCodeLive;

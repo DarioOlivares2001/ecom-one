@@ -16,7 +16,7 @@ const POST_COMPRA_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const POLL_INTERVAL_MS = 2000;
 const POLL_MAX_MS = 25000;
 
-type PaymentStatus = "loading" | "paid" | "failed";
+type PaymentStatus = "loading" | "paid" | "failed" | "needs_review";
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 
@@ -72,6 +72,42 @@ function ErrorIcon() {
           initial={{ pathLength: 0 }}
           animate={{ pathLength: 1 }}
           transition={{ duration: 0.35, delay: 0.38, ease: "easeOut" }}
+        />
+      </svg>
+    </motion.div>
+  );
+}
+
+function ReviewIcon() {
+  return (
+    <motion.div
+      initial={{ scale: 0 }}
+      animate={{ scale: 1 }}
+      transition={{ type: "spring", stiffness: 220, damping: 18, delay: 0.05 }}
+      className="flex h-24 w-24 items-center justify-center rounded-full bg-amber-50 ring-8 ring-amber-100"
+    >
+      <svg viewBox="0 0 52 52" className="h-12 w-12" aria-hidden>
+        <motion.circle
+          cx="26" cy="26" r="24"
+          fill="none" stroke="#d97706" strokeWidth="2"
+          initial={{ pathLength: 0, opacity: 0 }}
+          animate={{ pathLength: 1, opacity: 1 }}
+          transition={{ duration: 0.45, ease: "easeOut" }}
+        />
+        <motion.path
+          fill="none" stroke="#d97706" strokeWidth="3.5"
+          strokeLinecap="round" strokeLinejoin="round"
+          d="M26 15v14"
+          initial={{ pathLength: 0 }}
+          animate={{ pathLength: 1 }}
+          transition={{ duration: 0.3, delay: 0.35, ease: "easeOut" }}
+        />
+        <motion.circle
+          cx="26" cy="36" r="1.6"
+          fill="#d97706"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.6 }}
         />
       </svg>
     </motion.div>
@@ -169,12 +205,17 @@ function ConfirmationContent() {
 
   // Verifica estado real con polling: awaiting_payment → sigue polleando,
   // paid → éxito (limpia carrito), cualquier otro estado → fallo inmediato.
+  // needsManualReview (Flow confirmó el pago pero no se pudo registrar en
+  // Neon) es un caso aparte: no es un fallo de pago, así que nunca se
+  // muestra como tal, aunque el polling siga corriendo (si el problema era
+  // transitorio, un intento posterior puede resolverlo solo y pasar a "paid").
   useEffect(() => {
     if (!order) { setPaymentStatus("failed"); return; }
 
     const controller = new AbortController();
     const startTime = Date.now();
     let pollTimeout: ReturnType<typeof setTimeout>;
+    let sawNeedsReview = false;
 
     // WA config: se carga una sola vez en paralelo, no bloquea el polling.
     fetch("/api/checkout/whatsapp-config", { signal: controller.signal })
@@ -199,16 +240,25 @@ function ConfirmationContent() {
 
         const data = (await res.json()) as {
           status?: string;
+          needsManualReview?: boolean;
           displayCode?: string | null;
           items?: Array<{ product_id?: string; price?: number; quantity?: number }>;
         };
-        const { status } = data;
+        const { status, needsManualReview } = data;
 
         if (status === "paid") {
           if (!clearRef.current) { clearRef.current = true; clear(); }
           setPaymentStatus("paid");
           firePurchaseOnce(data);
           return;
+        }
+
+        if (needsManualReview) {
+          // Flow confirmó el pago pero no se pudo registrar en Neon: no es un
+          // pago fallido — se muestra un estado distinto y se sigue
+          // polleando por si un reintento posterior lo resuelve solo.
+          sawNeedsReview = true;
+          setPaymentStatus("needs_review");
         }
 
         // Estado terminal distinto a paid (cancelled, rejected, etc.) → fallo inmediato.
@@ -219,6 +269,13 @@ function ConfirmationContent() {
 
         // Sigue en awaiting_payment: reintentar si no agotamos el tiempo.
         if (Date.now() - startTime >= POLL_MAX_MS) {
+          if (sawNeedsReview) {
+            // Flow ya confirmó el pago — no corresponde tratarlo como
+            // impago ni pedir a cancel-if-unpaid que lo cancele. Se deja el
+            // estado "needs_review" tal cual, con evidencia ya guardada en
+            // la orden para revisión administrativa.
+            return;
+          }
           // Posible cancelación voluntaria que Flow no notificó por webhook.
           // Verificamos con Flow usando el flow_token guardado en BD (no el
           // status que reporte el cliente) antes de marcar la orden cancelled.
@@ -300,6 +357,67 @@ function ConfirmationContent() {
         >
           Si el problema persiste, contáctanos y te ayudamos.
         </motion.p>
+      </main>
+    );
+  }
+
+  // ── Needs manual review ────────────────────────────────────────────────────
+  if (paymentStatus === "needs_review") {
+    const waMsg = `Hola, mi pago para el pedido ${display ?? order ?? ""} fue confirmado por Flow pero no veo novedades. ¿Pueden ayudarme?`;
+    const waUrl =
+      waEnabled && waPhone
+        ? `https://wa.me/${waPhone.replace(/\D/g, "")}?text=${encodeURIComponent(waMsg)}`
+        : null;
+
+    return (
+      <main className="flex min-h-[82vh] flex-col items-center justify-center px-4 py-16 text-center">
+        <ReviewIcon />
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5, duration: 0.4, ease: "easeOut" }}
+          className="mt-8 flex flex-col items-center gap-5"
+        >
+          <h1 className="font-display text-3xl font-bold tracking-tight text-[var(--color-text)] sm:text-4xl">
+            Tu pago fue confirmado
+          </h1>
+
+          <p className="max-w-sm leading-relaxed text-[var(--color-text-muted)]">
+            Flow confirmó tu pago y estamos terminando de procesar tu pedido.
+            Si no recibes novedades pronto, escríbenos con este código y te
+            ayudamos de inmediato.
+          </p>
+
+          {display && (
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-6 py-3.5">
+              <p className="text-xs font-medium uppercase tracking-widest text-[var(--color-text-muted)]">
+                Código de pedido
+              </p>
+              <p className="mt-0.5 font-mono font-display text-xl font-bold text-[var(--color-text)]">
+                {display}
+              </p>
+            </div>
+          )}
+
+          <div className="mt-2 flex flex-col items-center gap-3 sm:flex-row">
+            <Link href="/productos">
+              <Button size="lg">Seguir comprando</Button>
+            </Link>
+
+            {waUrl && (
+              <a
+                href={waUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex h-11 items-center gap-2 rounded-[var(--radius-md)] border border-[#1e9e51] bg-gradient-to-b from-[#2adf72] to-[#22c55e] px-5 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5"
+              >
+                <MessageCircle className="h-4 w-4" />
+                Pedir ayuda por WhatsApp
+              </a>
+            )}
+          </div>
+        </motion.div>
       </main>
     );
   }

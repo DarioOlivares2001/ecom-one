@@ -1,38 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
-import crypto from "crypto";
 import {
   getOrderByDisplayCode,
-  getOrderById,
   getOrderByOrderNumber,
-  updateOrderIfStatus,
 } from "@/lib/db/repositories/orders";
-import { confirmPaidOrderAndDecrementStock } from "@/lib/orders/confirmPaidAndDecrementStock";
-import { revalidateAfterStockChange } from "@/lib/orders/revalidateAfterStockChange";
-import { sendOrderNotification } from "@/lib/email/sendOrderNotification";
-import { sendMetaCapiPurchase } from "@/lib/pixel/capi";
-import { getPublicSiteUrl } from "@/lib/site-url";
-import { FLOW_API_KEY, FLOW_API_URL, FLOW_SECRET_KEY } from "@/lib/flow/config";
-
-/**
- * HMAC-SHA256 sobre claves ordenadas (mismo esquema que /payment/create).
- */
-function sign(params: Record<string, string>, secret: string): string {
-  const message = Object.keys(params)
-    .sort()
-    .map((k) => `${k}${params[k]}`)
-    .join("");
-  return crypto.createHmac("sha256", secret).update(message).digest("hex");
-}
-
+import { FLOW_API_KEY, FLOW_SECRET_KEY } from "@/lib/flow/config";
+import { getFlowPaymentStatus } from "@/lib/flow/getPaymentStatus";
+import { applyFlowStatusToOrder } from "@/lib/orders/verifyFlowPayment";
 
 /**
  * Webhook de confirmación de Flow.
  *
  * Flujo:
  *  1. Flow nos envía `token` (POST x-www-form-urlencoded).
- *  2. Consultamos `payment/getStatus` con `apiKey` + `token` firmado.
- *  3. Si `status === 2` (paid), llamamos RPC para descontar stock y
- *     marcar la orden como `paid` (idempotente).
+ *  2. Consultamos `payment/getStatus` con `apiKey` + `token` firmado — nunca
+ *     confiamos en el body del webhook en sí.
+ *  3. Buscamos la orden por el `commerceOrder` que Flow devuelve.
+ *  4. Delegamos la confirmación/cancelación idempotente en
+ *     `applyFlowStatusToOrder` (compartida con la verificación directa en
+ *     el retorno del navegador y con `cancel-if-unpaid`).
  *
  * Para evitar reintentos infinitos de Flow ante errores transitorios,
  * siempre respondemos 200 salvo error de protocolo (body inválido).
@@ -52,29 +37,17 @@ export async function POST(request: NextRequest) {
     }
 
     // ── 1. Consultar estado del pago a Flow ─────────────────────────────────
-    const queryParams: Record<string, string> = {
-      apiKey: FLOW_API_KEY,
-      token,
-    };
-    queryParams.s = sign(queryParams, FLOW_SECRET_KEY);
-    const qs = new URLSearchParams(queryParams).toString();
+    const flowRes = await getFlowPaymentStatus(token);
 
-    const res = await fetch(`${FLOW_API_URL}/payment/getStatus?${qs}`, {
-      method: "GET",
-    });
-    const data: unknown = await res.json().catch(() => ({}));
-    const obj = (data ?? {}) as Record<string, unknown>;
-
-    if (!res.ok) {
+    if (!flowRes.ok) {
       console.error("[flow-webhook] getStatus respondió error", {
-        status: res.status,
-        body: obj,
+        status: flowRes.httpStatus,
+        body: flowRes.raw,
       });
       return NextResponse.json({ received: true }, { status: 200 });
     }
 
-    const statusCode = Number(obj.status);
-    const commerceOrder = String(obj.commerceOrder ?? "").trim();
+    const { statusCode, commerceOrder } = flowRes;
 
     if (!commerceOrder) {
       console.warn("[flow-webhook] commerceOrder vacío");
@@ -107,117 +80,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ received: true }, { status: 200 });
     }
 
+    // ── 3. Aplicar confirmación/cancelación idempotente ─────────────────────
     // Flow status:  1 → pendiente  2 → pagado  3 → rechazado  4 → cancelado
+    const outcome = await applyFlowStatusToOrder(orderRow, statusCode);
 
-    if (statusCode === 1) {
-      // Genuinamente pendiente: Flow puede volver a confirmar, no tocar la orden.
-      console.log("[flow-webhook] pago pendiente (statusCode 1), sin cambios", { commerceOrder });
-      return NextResponse.json({ received: true }, { status: 200 });
-    }
-
-    if (statusCode === 3 || statusCode === 4) {
-      // Terminal sin pago: marcar cancelled para que el polling de la confirmación lo detecte.
-      // Guard .eq("status", "awaiting_payment") evita pisar una orden ya paid si este
-      // webhook de rechazo llega tarde (después del webhook de pago exitoso).
-      console.log("[flow-webhook] pago no completado, marcando cancelled", { commerceOrder, statusCode });
-      await updateOrderIfStatus(orderRow.id, "awaiting_payment", { status: "cancelled" });
-      return NextResponse.json({ received: true }, { status: 200 });
-    }
-
-    if (statusCode !== 2) {
-      console.warn("[flow-webhook] statusCode desconocido, sin cambios", { commerceOrder, statusCode });
-      return NextResponse.json({ received: true }, { status: 200 });
-    }
-
-    // ── 3. Descontar stock (idempotente) ───────────────────────────────────
-    const stockRes = await confirmPaidOrderAndDecrementStock(orderRow.id);
-    if (!stockRes.ok) {
-      console.error("[flow-webhook] error descontando stock", {
+    if (outcome.needsManualReview) {
+      console.error("[flow-webhook][CRITICAL] pago confirmado por Flow pero no se pudo registrar", {
         commerceOrder,
-        error: stockRes.error,
-        code: stockRes.code,
+        orderId: orderRow.id,
+        reason: outcome.technicalReason,
       });
-      return NextResponse.json({ received: true }, { status: 200 });
-    }
-
-    console.log("[flow-webhook] orden confirmada", {
-      commerceOrder,
-      alreadyDiscounted: stockRes.alreadyDiscounted,
-      decrementedLines: stockRes.decrementedLines,
-      finalStatus: stockRes.finalStatus,
-    });
-
-    // Emails admin + cliente, y Purchase de Meta CAPI — solo en el primer
-    // webhook de pago (idempotente vía alreadyDiscounted).
-    if (!stockRes.alreadyDiscounted) {
-      let fullOrder: Awaited<ReturnType<typeof getOrderById>> = null;
-      try {
-        fullOrder = await getOrderById(orderRow.id);
-      } catch (fetchError) {
-        console.error("[flow-webhook] error leyendo la orden para notificaciones:", fetchError);
-      }
-
-      if (fullOrder) {
-        try {
-          const addr = (fullOrder.shipping_address ?? {}) as Record<string, string>;
-          await sendOrderNotification({
-            orderNumber: fullOrder.order_number,
-            orderStatus: "paid",
-            customerName: fullOrder.customer_name,
-            customerEmail: fullOrder.customer_email,
-            customerPhone: fullOrder.customer_phone ?? null,
-            shippingAddress: {
-              direccion: addr.direccion ?? "",
-              ciudad: addr.ciudad ?? "",
-              region: addr.region ?? "",
-            },
-            items: (Array.isArray(fullOrder.items) ? fullOrder.items : []) as unknown as Parameters<
-              typeof sendOrderNotification
-            >[0]["items"],
-            subtotal: fullOrder.subtotal,
-            shippingCost: fullOrder.shipping_cost,
-            total: fullOrder.total,
-          });
-        } catch (emailError) {
-          console.error("[flow-webhook] error enviando emails de confirmación:", emailError);
-        }
-
-        // Meta CAPI Purchase — fuente de verdad server-side, no depende de que
-        // el cliente vuelva a la página de gracias. Un fallo acá nunca debe
-        // romper el webhook (la orden ya quedó 'paid' y con stock descontado).
-        try {
-          const eventId: string | undefined = fullOrder.display_code ?? commerceOrder;
-          if (eventId) {
-            const orderItems = Array.isArray(fullOrder.items) ? fullOrder.items : [];
-            await sendMetaCapiPurchase({
-              eventId,
-              orderId: eventId,
-              contentIds: orderItems
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                .map((i: any) => i?.product_id)
-                .filter((id: unknown): id is string => Boolean(id)),
-              // value lo calcula sendMetaCapiPurchase con sumProductsValue (sin envío).
-              items: orderItems.map(
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                (i: any) => ({ price: Number(i?.price) || 0, quantity: Number(i?.quantity) || 0 })
-              ),
-              eventSourceUrl: `${getPublicSiteUrl()}/checkout/confirmacion?order=${fullOrder.order_number}&display=${encodeURIComponent(eventId)}`,
-              customerEmail: fullOrder.customer_email,
-              customerPhone: fullOrder.customer_phone ?? null,
-              clientIpAddress: fullOrder.client_ip_address ?? null,
-              clientUserAgent: fullOrder.client_user_agent ?? null,
-            });
-          }
-        } catch (capiError) {
-          console.error("[flow-webhook] error enviando Purchase a Meta CAPI:", capiError);
-        }
-      }
-    }
-
-    // Sólo invalidar caches cuando hubo descuento real (evita re-invalidar
-    // ante webhooks duplicados que entran al early-return idempotente).
-    if (!stockRes.alreadyDiscounted && stockRes.decrementedLines > 0) {
-      revalidateAfterStockChange();
+    } else {
+      console.log("[flow-webhook] resultado aplicado", {
+        commerceOrder,
+        orderId: orderRow.id,
+        status: outcome.status,
+        justConfirmedPaid: outcome.justConfirmedPaid,
+      });
     }
 
     return NextResponse.json({ received: true }, { status: 200 });

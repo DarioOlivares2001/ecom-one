@@ -1,15 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import crypto from "crypto";
-import { getOrderByOrderNumber, updateOrderIfStatus } from "@/lib/db/repositories/orders";
-import { FLOW_API_KEY, FLOW_API_URL, FLOW_SECRET_KEY } from "@/lib/flow/config";
-
-function sign(params: Record<string, string>, secret: string): string {
-  const message = Object.keys(params)
-    .sort()
-    .map((k) => `${k}${params[k]}`)
-    .join("");
-  return crypto.createHmac("sha256", secret).update(message).digest("hex");
-}
+import { getOrderByOrderNumber } from "@/lib/db/repositories/orders";
+import { verifyFlowPaymentForOrder } from "@/lib/orders/verifyFlowPayment";
 
 /**
  * Flow no envía urlConfirmation cuando el usuario cancela voluntariamente el
@@ -17,6 +8,11 @@ function sign(params: Record<string, string>, secret: string): string {
  * awaiting_payment. Este endpoint lo resuelve consultando a Flow el estado
  * real con el flow_token guardado en BD — nunca confía en lo que el cliente
  * dice, solo usa el order_number para encontrar el flow_token ya persistido.
+ *
+ * Delega en `verifyFlowPaymentForOrder` (compartida con el webhook y con la
+ * verificación directa del retorno del navegador): si Flow reporta pagado,
+ * la orden se confirma acá mismo — antes esta ruta solo se abstenía de
+ * cancelar y la dejaba huérfana en `awaiting_payment` sin nunca confirmarla.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -47,49 +43,33 @@ export async function POST(request: NextRequest) {
     if (!flowToken || flowToken.startsWith("MOCK-")) {
       return NextResponse.json({ ok: true, action: "none", reason: "sin flow_token" });
     }
-    if (!FLOW_API_KEY || !FLOW_SECRET_KEY) {
+
+    const outcome = await verifyFlowPaymentForOrder(orderRow);
+
+    // SEGURIDAD CRÍTICA: si Flow confirma pagado, se confirma la orden — nunca se cancela.
+    if (outcome.status === "paid") {
+      console.log("[cancel-if-unpaid] Flow reporta pagado, orden confirmada", { orderNumber });
+      return NextResponse.json({ ok: true, action: "confirmed" });
+    }
+
+    if (outcome.needsManualReview) {
+      console.error("[cancel-if-unpaid][CRITICAL] Flow confirmó el pago pero no se pudo registrar", {
+        orderNumber,
+        reason: outcome.technicalReason,
+      });
       return NextResponse.json(
-        { ok: false, error: "Flow credentials not configured" },
+        { ok: false, error: "Flow confirmó el pago pero no se pudo registrar; requiere revisión manual" },
         { status: 500 }
       );
     }
 
-    // Verificar con Flow — la verdad la tiene Flow, no el cliente.
-    const queryParams: Record<string, string> = { apiKey: FLOW_API_KEY, token: flowToken };
-    queryParams.s = sign(queryParams, FLOW_SECRET_KEY);
-    const flowRes = await fetch(
-      `${FLOW_API_URL}/payment/getStatus?${new URLSearchParams(queryParams)}`,
-      { method: "GET" }
-    );
-    const data = (await flowRes.json().catch(() => ({}))) as Record<string, unknown>;
-
-    if (!flowRes.ok) {
-      console.error("[cancel-if-unpaid] Flow getStatus error", {
-        status: flowRes.status,
-        orderNumber,
-      });
-      return NextResponse.json({ ok: false, error: "Flow API error" }, { status: 502 });
+    if (outcome.status === "cancelled") {
+      console.log("[cancel-if-unpaid] orden cancelada", { orderNumber });
+      return NextResponse.json({ ok: true, action: "cancelled" });
     }
 
-    const flowStatus = Number(data.status);
-
-    // SEGURIDAD CRÍTICA: nunca cancelar un pago que Flow confirma como pagado.
-    if (flowStatus === 2) {
-      return NextResponse.json({ ok: true, action: "none", reason: "paid" });
-    }
-
-    // Guard: solo actualiza si sigue en "awaiting_payment", evita pisar una
-    // orden ya paid si hubo una carrera con el webhook real.
-    try {
-      await updateOrderIfStatus(orderRow.id, "awaiting_payment", { status: "cancelled" });
-    } catch (updateErr) {
-      const message = updateErr instanceof Error ? updateErr.message : String(updateErr);
-      console.error("[cancel-if-unpaid] DB error", { error: message, orderNumber });
-      return NextResponse.json({ ok: false, error: message }, { status: 500 });
-    }
-
-    console.log("[cancel-if-unpaid] orden cancelada", { orderNumber, flowStatus });
-    return NextResponse.json({ ok: true, action: "cancelled" });
+    // Flow todavía reporta pendiente (status 1) — no se cancela, puede confirmarse después.
+    return NextResponse.json({ ok: true, action: "none", reason: outcome.status });
   } catch (err) {
     console.error("[cancel-if-unpaid] excepción", err);
     return NextResponse.json({ ok: false, error: "Internal error" }, { status: 500 });
