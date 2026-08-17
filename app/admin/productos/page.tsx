@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
-import { Plus, Pencil, PackageOpen } from "lucide-react";
+import { Plus, Pencil, PackageOpen, Sparkles } from "lucide-react";
 import { listProductsByAdminTab, type AdminProductTab } from "@/lib/db/repositories";
 import { normalizeProductCategory } from "@/lib/product/categories";
 import { isAllowedImageSrc } from "@/lib/images/isAllowedImageSrc";
@@ -52,13 +52,22 @@ export default async function AdminProductosPage({
           <h1 className="font-display text-2xl font-bold text-zinc-900">Productos</h1>
           <p className="mt-0.5 text-sm text-zinc-500">{products.length} en esta vista</p>
         </div>
-        <Link
-          href="/admin/productos/nuevo"
-          className="flex items-center gap-2 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700"
-        >
-          <Plus className="h-4 w-4" />
-          Nuevo producto
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/admin/productos/crear-con-ia"
+            className="flex items-center gap-2 rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-800 transition-colors hover:bg-zinc-50"
+          >
+            <Sparkles className="h-4 w-4" />
+            Crear producto con IA
+          </Link>
+          <Link
+            href="/admin/productos/nuevo"
+            className="flex items-center gap-2 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700"
+          >
+            <Plus className="h-4 w-4" />
+            Nuevo producto manual
+          </Link>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -85,13 +94,22 @@ export default async function AdminProductosPage({
             </p>
           </div>
           {tab === "active" && (
-            <Link
-              href="/admin/productos/nuevo"
-              className="mt-2 flex items-center gap-2 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700"
-            >
-              <Plus className="h-4 w-4" />
-              Crear producto
-            </Link>
+            <div className="mt-2 flex items-center gap-2">
+              <Link
+                href="/admin/productos/crear-con-ia"
+                className="flex items-center gap-2 rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-50"
+              >
+                <Sparkles className="h-4 w-4" />
+                Crear producto con IA
+              </Link>
+              <Link
+                href="/admin/productos/nuevo"
+                className="flex items-center gap-2 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700"
+              >
+                <Plus className="h-4 w-4" />
+                Nuevo producto manual
+              </Link>
+            </div>
           )}
         </div>
       ) : (

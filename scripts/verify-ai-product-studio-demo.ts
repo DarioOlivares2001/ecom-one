@@ -3,9 +3,11 @@
  * determinista del Estudio IA de Producto (Fase 1 — modo demo).
  *
  * Cubre: determinismo, validez contra el contrato Zod real (el mismo que
- * usa `products.product_sections`), y las reglas duras de "no inventar"
- * (materiales/medidas/certificaciones/garantías/stock/promesas médicas,
- * nunca testimonios/FAQ/antes-después fabricados).
+ * usa `products.product_sections`), las reglas duras de "no inventar", la
+ * detección de nombre (nunca un encabezado genérico como "Características
+ * destacadas"), y el filtrado de líneas ignorables (contacto/WhatsApp,
+ * confirmación de stock, ofertas, despacho de terceros, URLs externas,
+ * instrucciones administrativas, garantías ajenas a la tienda).
  *
  * Uso: npx tsx scripts/verify-ai-product-studio-demo.ts
  */
@@ -68,6 +70,14 @@ console.log("\n[2] El borrador generado siempre valida contra aiProductDraftSche
         tone: "confiable",
       },
     },
+    {
+      label: "solo encabezados genéricos, sin nombre real (regresión reportada)",
+      input: {
+        supplierText: "Características destacadas\n- Punto uno\n- Punto dos",
+        selectedImages: [IMG(1)],
+        tone: "directo",
+      },
+    },
   ];
 
   for (const { label, input } of cases) {
@@ -81,11 +91,40 @@ console.log("\n[2] El borrador generado siempre valida contra aiProductDraftSche
   }
 }
 
+// ── [2b] Regresión exacta reportada: "Características destacadas" como nombre ─
+console.log('\n[2b] Regresión: "Características destacadas" nunca se usa como nombre');
+{
+  const draft = generateDemoDraft(
+    {
+      supplierText: "Características destacadas\n- Resistente al agua\n- Liviano\n- Fácil de transportar",
+      selectedImages: [IMG(1)],
+      tone: "directo",
+    },
+    FIXED_TIMESTAMP
+  );
+  assert(draft.name === "Nombre por confirmar", `nombre = "Nombre por confirmar" (obtuvo: "${draft.name}")`);
+  assert(draft.slug === "", "slug vacío cuando el nombre es el placeholder");
+  assert(draft.meta.pendingFields.includes("name"), "name queda en pendingFields");
+
+  const draftWithRealName = generateDemoDraft(
+    {
+      supplierText: "Mochila Urbana Resistente\nCaracterísticas destacadas\n- Resistente al agua\n- Liviano",
+      selectedImages: [IMG(1)],
+      tone: "directo",
+    },
+    FIXED_TIMESTAMP
+  );
+  assert(
+    draftWithRealName.name === "Mochila Urbana Resistente",
+    `con una línea de nombre real ANTES del encabezado genérico, se detecta correctamente (obtuvo: "${draftWithRealName.name}")`
+  );
+}
+
 // ── [3] Reglas duras de "no inventar" ───────────────────────────────────────
 console.log("\n[3] No inventa materiales/medidas/certificaciones/garantías/stock/promesas médicas");
 {
   const input: AIProductStudioInput = {
-    supplierText: "Cojín decorativo redondo\n- Relleno suave\n- Colores disponibles: gris y beige",
+    supplierText: "Cojín Decorativo Redondo\n- Relleno suave\n- Colores disponibles: gris y beige",
     selectedImages: [IMG(1)],
     tone: "directo",
   };
@@ -103,13 +142,14 @@ console.log("\n[3] No inventa materiales/medidas/certificaciones/garantías/stoc
     !("stock" in draft) && !("price" in draft),
     "el contrato de salida no incluye price/stock: el estudio no puede tocarlos"
   );
+  assert(draft.meta.claimsToAvoid.some((c) => c.startsWith("materiales:")), "claimsToAvoid marca materiales como no mencionados");
 }
 
 console.log("\n[3b] Nunca genera testimonios, FAQ ni comparador antes/después");
 {
   const input: AIProductStudioInput = {
     supplierText:
-      "Zapatillas urbanas\n- Suela antideslizante\n- Plantilla removible\n¿Qué talla debería elegir?\n¿Tienen garantía?",
+      "Zapatillas Urbanas\n- Suela antideslizante\n- Plantilla removible\n¿Qué talla debería elegir?\n¿Tienen garantía?",
     selectedImages: [IMG(1), IMG(2), IMG(3)],
     tone: "confiable",
   };
@@ -124,11 +164,50 @@ console.log("\n[3b] Nunca genera testimonios, FAQ ni comparador antes/después")
   );
 }
 
+// ── [3c] Filtrado de líneas ignorables ──────────────────────────────────────
+console.log("\n[3c] Ignora contacto/stock/ofertas/despacho/URLs/administrativo/garantías del proveedor");
+{
+  const input: AIProductStudioInput = {
+    supplierText: [
+      "Set de Ollas Antiadherentes",
+      "- Apto para todo tipo de cocinas",
+      "- Mango ergonómico",
+      "Escríbenos por WhatsApp al +56912345678 para más info",
+      "Llamar para confirmar stock antes de comprar",
+      "20% OFF por tiempo limitado",
+      "Despacho por transportista externo, no la tienda",
+      "Más fotos en https://proveedor-externo.cl/catalogo",
+      "SKU proveedor: PX-88213",
+      "Garantía del fabricante: 6 meses directamente con el proveedor",
+    ].join("\n"),
+    selectedImages: [IMG(1)],
+    tone: "directo",
+  };
+  const draft = generateDemoDraft(input, FIXED_TIMESTAMP);
+  const fullText = `${draft.description} ${JSON.stringify(draft.product_sections)}`.toLowerCase();
+
+  assert(!fullText.includes("whatsapp") && !fullText.includes("912345678"), "no incluye WhatsApp/teléfono del proveedor");
+  assert(!fullText.includes("confirmar stock"), "no incluye la instrucción de llamar para confirmar stock");
+  assert(!fullText.includes("off") && !fullText.includes("tiempo limitado"), "no incluye la oferta/descuento del proveedor");
+  assert(!fullText.includes("transportista externo"), "no incluye la mención de despacho de terceros");
+  assert(!fullText.includes("proveedor-externo.cl"), "no incluye la URL externa");
+  assert(!fullText.includes("sku proveedor"), "no incluye la instrucción administrativa interna");
+  assert(!fullText.includes("garantía del fabricante") && !fullText.includes("6 meses"), "no incluye la garantía ajena a la tienda");
+
+  assert(draft.meta.ignoredSupplierLines.length >= 7, `se registraron ${draft.meta.ignoredSupplierLines.length} líneas ignoradas (>=7 esperado)`);
+  assert(
+    draft.meta.ignoredSupplierLines.some((l) => l.startsWith("Contacto/WhatsApp")),
+    "ignoredSupplierLines identifica la categoría Contacto/WhatsApp"
+  );
+
+  assert(fullText.includes("apto para todo tipo de cocinas"), "SÍ conserva contenido legítimo del producto (no sobre-filtra)");
+}
+
 // ── [4] Estructura de secciones depende de las imágenes/viñetas disponibles ──
 console.log("\n[4] Secciones generadas dependen de imágenes/viñetas disponibles, nunca se inventan de más");
 {
   const noBullets = generateDemoDraft(
-    { supplierText: "Producto sin viñetas, solo una oración descriptiva.", selectedImages: [IMG(1)], tone: "directo" },
+    { supplierText: "Producto Sin Viñetas\nSolo una oración descriptiva.", selectedImages: [IMG(1)], tone: "directo" },
     FIXED_TIMESTAMP
   );
   assert(
@@ -137,7 +216,7 @@ console.log("\n[4] Secciones generadas dependen de imágenes/viñetas disponible
   );
 
   const oneImage = generateDemoDraft(
-    { supplierText: "- Punto uno\n- Punto dos", selectedImages: [IMG(1)], tone: "directo" },
+    { supplierText: "Producto Con Viñetas\n- Punto uno\n- Punto dos", selectedImages: [IMG(1)], tone: "directo" },
     FIXED_TIMESTAMP
   );
   assert(
@@ -146,7 +225,7 @@ console.log("\n[4] Secciones generadas dependen de imágenes/viñetas disponible
   );
 
   const threeImages = generateDemoDraft(
-    { supplierText: "- Punto uno\n- Punto dos", selectedImages: [IMG(1), IMG(2), IMG(3)], tone: "directo" },
+    { supplierText: "Producto Con Viñetas\n- Punto uno\n- Punto dos", selectedImages: [IMG(1), IMG(2), IMG(3)], tone: "directo" },
     FIXED_TIMESTAMP
   );
   assert(

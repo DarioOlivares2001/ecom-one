@@ -15,6 +15,10 @@ const poppinsAdmin = Poppins({
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const currentPath = headers().get("x-pathname") || headers().get("next-url") || "";
   const isLoginRoute = currentPath.startsWith("/admin/login");
+  // Asistente "Crear producto con IA": pantalla completa, sin el sidebar del
+  // admin, para dejarle más espacio al asistente de 3 pasos.
+  const isFullScreenRoute = currentPath.startsWith("/admin/productos/crear-con-ia");
+  const hideSidebar = isLoginRoute || isFullScreenRoute;
   const session = getAdminSessionFromCookies();
   if (!isLoginRoute && !session) {
     redirect("/admin/login");
@@ -24,8 +28,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   return (
     <div className={`min-h-screen bg-zinc-100 ${poppinsAdmin.className}`}>
-      {!isLoginRoute ? <AdminSidebar settings={settings} adminRole={session?.role ?? "admin"} /> : null}
-      <div className={!isLoginRoute ? "lg:pl-64" : undefined}>
+      {!hideSidebar ? <AdminSidebar settings={settings} adminRole={session?.role ?? "admin"} /> : null}
+      <div className={!hideSidebar ? "lg:pl-64" : undefined}>
         <main className="min-h-screen p-6 pt-20 lg:pt-6">
           {children}
         </main>

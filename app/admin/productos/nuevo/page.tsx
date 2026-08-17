@@ -1,10 +1,10 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Plus, X } from "lucide-react";
+import { ArrowLeft, Plus, Sparkles, X } from "lucide-react";
 import { clsx } from "clsx";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -29,8 +29,8 @@ import {
 } from "@/components/admin/product-sections/ProductSectionsBuilder";
 import { findSectionsUsingImage } from "@/lib/product/sections/imageUsage";
 import type { ProductSectionList } from "@/lib/product/sections/types";
-import { AIProductStudioLauncher } from "@/components/admin/ai-product-studio/AIProductStudioLauncher";
 import type { AIProductDraft } from "@/lib/ai-product-studio/schema";
+import { readAndClearAIStudioBridge } from "@/lib/ai-product-studio/bridge";
 
 // ─── Rich text editor (client-only) ──────────────────────────────────────────
 
@@ -133,11 +133,14 @@ export default function NuevoProductoPage() {
   const [sectionsSnapshot, setSectionsSnapshot] = useState<ProductSectionList>([]);
   const sectionsBuilderRef = useRef<ProductSectionsBuilderHandle>(null);
 
-  // Estudio IA de Producto: al aplicar un borrador, los bloques modulares se
-  // vuelcan acá y se fuerza un remount de ProductSectionsBuilder (es
+  // Estudio IA de Producto: si se llega desde /admin/productos/crear-con-ia,
+  // el borrador viaja por sessionStorage (ver lib/ai-product-studio/bridge.ts)
+  // y se aplica una sola vez al montar. Los bloques modulares se vuelcan en
+  // `aiSections` y se fuerza un remount de ProductSectionsBuilder (es
   // uncontrolled — solo lee `initialSections` al montar) subiendo la key.
   const [aiSections, setAiSections] = useState<ProductSectionList | null>(null);
   const [sectionsResetKey, setSectionsResetKey] = useState(0);
+  const [appliedFromAIStudio, setAppliedFromAIStudio] = useState(false);
 
   function handleApplyAIDraft(draft: AIProductDraft) {
     setForm((f) => ({
@@ -153,8 +156,17 @@ export default function NuevoProductoPage() {
     }
     setAiSections(draft.product_sections);
     setSectionsResetKey((k) => k + 1);
-    toast.success("Borrador del Estudio IA aplicado. Revisa los campos antes de guardar.");
   }
+
+  useEffect(() => {
+    const bridged = readAndClearAIStudioBridge();
+    if (!bridged) return;
+    setProductMedia(bridged.productMedia);
+    handleApplyAIDraft(bridged.draft);
+    setAppliedFromAIStudio(true);
+    toast.success("Borrador del Estudio IA aplicado. Revisa todos los campos antes de guardar.");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function findMediaUsage(url: string) {
     const refs: { id: string; label: string }[] = [];
@@ -378,10 +390,17 @@ export default function NuevoProductoPage() {
         <h1 className="font-display text-2xl font-bold text-zinc-900">
           Nuevo producto
         </h1>
-        <div className="ml-auto">
-          <AIProductStudioLauncher mediaLibrary={productMedia} onApply={handleApplyAIDraft} />
-        </div>
       </div>
+
+      {appliedFromAIStudio && (
+        <div className="mb-6 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <Sparkles className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <span>
+            Este borrador viene del <strong>Estudio IA (modo demo)</strong>. Revisa todos los campos —
+            especialmente los marcados &quot;por confirmar&quot; — antes de guardar.
+          </span>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit}>
         {/* ── Two-column Shopify layout ── */}

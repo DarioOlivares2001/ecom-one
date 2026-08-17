@@ -78,6 +78,29 @@ export const aiProductDraftSchema = z.object({
     warnings: z.array(z.string()).default([]),
     /** Nombres de campos marcados "por confirmar" por falta de información en el texto de origen. */
     pendingFields: z.array(z.string()).default([]),
+    /**
+     * Hechos literales extraídos del texto del proveedor (líneas ya
+     * filtradas de contacto/stock/ofertas/administrativo) — lo que la vista
+     * previa muestra como "datos detectados del proveedor", separado de los
+     * campos "por confirmar". Mismo concepto que usará la IA real
+     * (`detected_facts` en AI_PRODUCT_STUDIO_PLAN.md).
+     */
+    detectedFacts: z.array(z.string()).default([]),
+    /**
+     * Categorías de afirmación que NO se deben hacer porque el texto de
+     * origen no las menciona (materiales, medidas, certificaciones,
+     * garantías...) — mismo concepto que `claims_to_avoid` en el contrato
+     * futuro de IA real.
+     */
+    claimsToAvoid: z.array(z.string()).default([]),
+    /**
+     * Líneas del texto del proveedor que se ignoraron a propósito (contacto/
+     * WhatsApp, llamadas para confirmar stock, ofertas, despacho de
+     * terceros, URLs externas, instrucciones administrativas, garantías
+     * ajenas a la tienda) — para que el admin pueda verificar que no se
+     * perdió nada importante, nunca se usan para generar la ficha.
+     */
+    ignoredSupplierLines: z.array(z.string()).default([]),
   }),
 });
 export type AIProductDraft = z.infer<typeof aiProductDraftSchema>;
