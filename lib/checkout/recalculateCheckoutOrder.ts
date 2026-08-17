@@ -9,7 +9,6 @@ import {
   getDiscountedUnitPrice,
   type ProductDiscountInput,
 } from "@/lib/discounts";
-import { normalizeOptimizedImageUrl } from "@/lib/images/normalizeOptimizedImageUrl";
 import { computeShippingCostClp } from "@/lib/checkout/shipping";
 import { getStoreSettings } from "@/lib/store-settings/getStoreSettings";
 
@@ -176,9 +175,31 @@ function productDiscountInputFromRow(row: ProductRow, listUnit: number): Product
   };
 }
 
+/**
+ * Descarta cualquier valor que no sea una URL pública absoluta (clave de
+ * objeto sin dominio, string vacío, etc.) — nunca se guarda algo que el
+ * navegador no pueda cargar directamente.
+ */
+function sanitizePublicImageUrl(raw: string | null | undefined): string {
+  const trimmed = String(raw ?? "").trim();
+  if (!trimmed || !/^https?:\/\//i.test(trimmed)) return "";
+  return trimmed;
+}
+
+/**
+ * Snapshot estable de la imagen principal: se guarda la URL pública tal cual
+ * está en `product.images[0]` (misma URL que catálogo/ficha/carrito/checkout),
+ * SIN reescribirla a una variante "-opt.webp". Esa optimización es un
+ * post-proceso manual (scripts/optimize-product-images.mjs) que no corre
+ * automáticamente al subir una imagen, así que la variante optimizada puede
+ * no existir todavía en R2 — reescribir la URL acá producía snapshots de
+ * pedido con una imagen rota (404) aunque el producto se viera bien en todo
+ * el resto del sitio.
+ */
 function firstImageUrl(images: string[] | null | undefined, fallback?: string): string {
-  const raw = Array.isArray(images) && images[0] ? String(images[0]) : fallback ?? "";
-  return normalizeOptimizedImageUrl(raw);
+  const fromGallery = Array.isArray(images) && images[0] ? sanitizePublicImageUrl(images[0]) : "";
+  if (fromGallery) return fromGallery;
+  return sanitizePublicImageUrl(fallback);
 }
 
 function buildOrderLine(params: {
@@ -330,9 +351,7 @@ export async function recalculateCheckoutOrder(
       };
     }
 
-    const image = variant?.image_url
-      ? normalizeOptimizedImageUrl(variant.image_url)
-      : firstImageUrl(p.images, line.clientImage);
+    const image = sanitizePublicImageUrl(variant?.image_url) || firstImageUrl(p.images, line.clientImage);
 
     if (line.checkoutSource === "upsell") {
       if (p.has_variants) {

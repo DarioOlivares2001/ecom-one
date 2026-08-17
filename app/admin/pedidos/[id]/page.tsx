@@ -16,14 +16,17 @@ async function getOrder(id: string) {
 }
 
 /**
- * Enlace de Dropi *actual* de cada producto de la orden, por id — fallback
- * para pedidos creados antes de que el producto tuviera enlace (o cuyo
- * snapshot de línea no lo trae). Si el producto ya no existe, o no tiene
- * enlace, simplemente no aparece en el mapa y el botón no se muestra.
+ * Datos *actuales* de cada producto de la orden, por id — fallback para
+ * pedidos cuyo snapshot de línea no trae el dato (enlace de Dropi que no
+ * existía aún al pedir, o imagen de pedidos creados antes del snapshot de
+ * imagen). Si el producto ya no existe, simplemente no aparece en el mapa.
  */
-async function getProductDropiUrlsForOrder(order: {
+async function getProductLookupsForOrder(order: {
   items: unknown;
-}): Promise<Record<string, string | null>> {
+}): Promise<{
+  dropiUrls: Record<string, string | null>;
+  images: Record<string, string | null>;
+}> {
   const items = Array.isArray(order.items) ? order.items : [];
   const productIds = Array.from(
     new Set(
@@ -32,18 +35,20 @@ async function getProductDropiUrlsForOrder(order: {
         .filter((id): id is string => typeof id === "string" && id.length > 0)
     )
   );
-  if (productIds.length === 0) return {};
+  if (productIds.length === 0) return { dropiUrls: {}, images: {} };
 
   try {
     const products = await getProductsByIds(productIds);
-    const map: Record<string, string | null> = {};
+    const dropiUrls: Record<string, string | null> = {};
+    const images: Record<string, string | null> = {};
     for (const p of products) {
-      map[p.id] = p.dropi_product_url;
+      dropiUrls[p.id] = p.dropi_product_url;
+      images[p.id] = Array.isArray(p.images) && p.images[0] ? p.images[0] : null;
     }
-    return map;
+    return { dropiUrls, images };
   } catch (error) {
-    console.error("[admin/pedidos] error resolviendo enlaces de Dropi:", error);
-    return {};
+    console.error("[admin/pedidos] error resolviendo datos de producto para el detalle:", error);
+    return { dropiUrls: {}, images: {} };
   }
 }
 
@@ -54,12 +59,13 @@ export default async function PedidoDetailPage({
 }) {
   const [order, settings] = await Promise.all([getOrder(params.id), getStoreSettings()]);
   if (!order) notFound();
-  const productDropiUrls = await getProductDropiUrlsForOrder(order);
+  const { dropiUrls: productDropiUrls, images: productImages } = await getProductLookupsForOrder(order);
   return (
     <OrderDetail
       order={order}
       storeName={settings.store_name}
       productDropiUrls={productDropiUrls}
+      productImages={productImages}
     />
   );
 }

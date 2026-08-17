@@ -11,6 +11,7 @@ import {
 import { formatPrice } from "@/lib/utils/format";
 import { toast } from "@/components/ui/Toast";
 import { OrderTimeline } from "@/components/admin/OrderTimeline";
+import { resolveOrderItemImage } from "@/lib/orders/resolveOrderItemImage";
 import { updateOrderStatusAction } from "../actions";
 
 const STATUS_OPTIONS = [
@@ -99,6 +100,35 @@ function resolveDropiUrl(
   return fallback && fallback.trim() ? fallback.trim() : null;
 }
 
+/**
+ * Miniatura de línea de pedido. Si `src` falla al cargar (URL rota, 404 de
+ * un snapshot antiguo apuntando a un objeto que ya no existe en R2), cae al
+ * mismo placeholder visual que usa la ausencia de imagen — nunca el ícono de
+ * imagen rota del navegador.
+ */
+function OrderItemThumb({ src, alt }: { src: string | null; alt: string }) {
+  const [errored, setErrored] = useState(false);
+  const showImage = Boolean(src) && !errored;
+
+  return (
+    <div className="h-12 w-12 shrink-0 overflow-hidden rounded-md border border-zinc-200 bg-zinc-100">
+      {showImage ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={src as string}
+          alt={alt}
+          className="h-full w-full object-cover"
+          onError={() => setErrored(true)}
+        />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center">
+          <Package className="h-4 w-4 text-zinc-300" strokeWidth={1} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function buildMapsQuery(addr: Record<string, unknown>): string {
   const line1 =
     addr.direccion != null
@@ -120,11 +150,14 @@ export function OrderDetail({
   order,
   storeName,
   productDropiUrls,
+  productImages,
 }: {
   order: any; // eslint-disable-line @typescript-eslint/no-explicit-any
   storeName: string;
   /** Enlace de Dropi actual del producto por id — fallback si la línea no trae su propio snapshot. */
   productDropiUrls?: Record<string, string | null>;
+  /** Primera imagen pública actual del producto por id — fallback si la línea no trae snapshot de imagen. */
+  productImages?: Record<string, string | null>;
 }) {
   const [currentStatus, setCurrentStatus] = useState<string>(() => normalizeOrderStatusKey(order.status));
   const [status, setStatus] = useState<string>(() => normalizeOrderStatusKey(order.status));
@@ -460,22 +493,10 @@ export function OrderDetail({
               {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
               {items.map((item: any, i: number) => {
                 const dropiUrl = resolveDropiUrl(item, productDropiUrls);
+                const itemImage = resolveOrderItemImage(item, productImages);
                 return (
                   <div key={i} className="flex items-start gap-3 py-2 first:pt-0 last:pb-0">
-                    <div className="h-12 w-12 shrink-0 overflow-hidden rounded-md border border-zinc-200 bg-zinc-100">
-                      {item.image ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={item.image}
-                          alt={item.name ?? "Producto"}
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center">
-                          <Package className="h-4 w-4 text-zinc-300" strokeWidth={1} />
-                        </div>
-                      )}
-                    </div>
+                    <OrderItemThumb src={itemImage} alt={item.name ?? "Producto"} />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium text-zinc-900">
                         {item.name ?? "Producto"}
