@@ -32,6 +32,8 @@ import {
 } from "@/components/admin/product-sections/ProductSectionsBuilder";
 import { findSectionsUsingImage } from "@/lib/product/sections/imageUsage";
 import type { ProductSectionList } from "@/lib/product/sections/types";
+import { AIProductStudioLauncher } from "@/components/admin/ai-product-studio/AIProductStudioLauncher";
+import type { AIProductDraft } from "@/lib/ai-product-studio/schema";
 
 // ─── Rich text editor (client-only) ──────────────────────────────────────────
 
@@ -219,6 +221,29 @@ export function EditProductoForm({
   // "esta imagen se usa en..." al borrar de la biblioteca (ver ProductSectionsBuilder).
   const [sectionsSnapshot, setSectionsSnapshot] = useState<ProductSectionList>([]);
   const sectionsBuilderRef = useRef<ProductSectionsBuilderHandle>(null);
+
+  // Estudio IA de Producto: al aplicar un borrador, los bloques modulares se
+  // vuelcan acá y se fuerza un remount de ProductSectionsBuilder (es
+  // uncontrolled — solo lee `initialSections` al montar) subiendo la key.
+  const [aiSections, setAiSections] = useState<ProductSectionList | null>(null);
+  const [sectionsResetKey, setSectionsResetKey] = useState(0);
+
+  function handleApplyAIDraft(draft: AIProductDraft) {
+    setForm((f) => ({
+      ...f,
+      name: draft.name || f.name,
+      slug: draft.slug || f.slug,
+      category: draft.category || f.category,
+    }));
+    if (draft.description) setDescription(draft.description);
+    if (draft.images.length > 0) {
+      setProductMedia((prev) => Array.from(new Set([...prev, ...draft.images])));
+      setImages(draft.images);
+    }
+    setAiSections(draft.product_sections);
+    setSectionsResetKey((k) => k + 1);
+    toast.success("Borrador del Estudio IA aplicado. Revisa los campos antes de guardar.");
+  }
 
   function findMediaUsage(url: string) {
     const refs: { id: string; label: string }[] = [];
@@ -442,6 +467,9 @@ export function EditProductoForm({
           <h1 className="font-display text-2xl font-bold text-zinc-900">Editar producto</h1>
           <p className="mt-0.5 text-sm text-zinc-400">{product.name}</p>
         </div>
+        <div className="ml-auto">
+          <AIProductStudioLauncher mediaLibrary={productMedia} onApply={handleApplyAIDraft} />
+        </div>
       </div>
 
       <form onSubmit={handleSubmit}>
@@ -503,10 +531,12 @@ export function EditProductoForm({
               <ProductGallerySelector library={productMedia} gallery={images} onChange={setImages} />
             </Card>
 
-            {/* Bloques modulares (Fase 2A) */}
+            {/* Bloques modulares (Fase 2A). key fuerza remount cuando el
+                Estudio IA aplica un borrador (el builder es uncontrolled). */}
             <ProductSectionsBuilder
+              key={sectionsResetKey}
               ref={sectionsBuilderRef}
-              initialSections={product.product_sections ?? []}
+              initialSections={aiSections ?? product.product_sections ?? []}
               hiddenInputName="product_sections_json"
               images={productMedia}
               onSectionsChange={setSectionsSnapshot}
