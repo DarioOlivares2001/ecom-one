@@ -100,25 +100,53 @@ function resolveDropiUrl(
   return fallback && fallback.trim() ? fallback.trim() : null;
 }
 
+type ThumbStage = "snapshot" | "fallback" | "placeholder";
+
+function initialThumbStage(snapshotImage: string | null, fallbackImage: string | null): ThumbStage {
+  if (snapshotImage) return "snapshot";
+  if (fallbackImage) return "fallback";
+  return "placeholder";
+}
+
 /**
- * Miniatura de línea de pedido. Si `src` falla al cargar (URL rota, 404 de
- * un snapshot antiguo apuntando a un objeto que ya no existe en R2), cae al
- * mismo placeholder visual que usa la ausencia de imagen — nunca el ícono de
- * imagen rota del navegador.
+ * Miniatura de línea de pedido con dos fuentes en cascada:
+ *  1. `snapshotImage` — la imagen guardada en la línea al momento del pedido.
+ *  2. Si falla al cargar (URL rota, 404 de un snapshot antiguo apuntando a un
+ *     objeto que ya no existe en R2), se intenta `fallbackImage` — la imagen
+ *     pública *actual* del producto — una sola vez.
+ *  3. Si también falla (o no hay `fallbackImage` válido/distinto), se muestra
+ *     el placeholder `Package` — nunca el ícono de imagen rota del navegador.
+ * `stage` solo avanza hacia adelante, así que cada `<img>` (una por `stage`,
+ * vía `key`) dispara `onError` como máximo una vez: no hay forma de entrar
+ * en loop.
  */
-function OrderItemThumb({ src, alt }: { src: string | null; alt: string }) {
-  const [errored, setErrored] = useState(false);
-  const showImage = Boolean(src) && !errored;
+function OrderItemThumb({
+  snapshotImage,
+  fallbackImage,
+  alt,
+}: {
+  snapshotImage: string | null;
+  fallbackImage: string | null;
+  alt: string;
+}) {
+  const [stage, setStage] = useState<ThumbStage>(() => initialThumbStage(snapshotImage, fallbackImage));
+
+  const src = stage === "snapshot" ? snapshotImage : stage === "fallback" ? fallbackImage : null;
+
+  function handleError() {
+    setStage((current) => (current === "snapshot" && fallbackImage ? "fallback" : "placeholder"));
+  }
 
   return (
     <div className="h-12 w-12 shrink-0 overflow-hidden rounded-md border border-zinc-200 bg-zinc-100">
-      {showImage ? (
+      {src ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={src as string}
+          key={stage}
+          src={src}
           alt={alt}
           className="h-full w-full object-cover"
-          onError={() => setErrored(true)}
+          onError={handleError}
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center">
@@ -493,10 +521,17 @@ export function OrderDetail({
               {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
               {items.map((item: any, i: number) => {
                 const dropiUrl = resolveDropiUrl(item, productDropiUrls);
-                const itemImage = resolveOrderItemImage(item, productImages);
+                const { snapshot: snapshotImage, fallback: fallbackImage } = resolveOrderItemImage(
+                  item,
+                  productImages
+                );
                 return (
                   <div key={i} className="flex items-start gap-3 py-2 first:pt-0 last:pb-0">
-                    <OrderItemThumb src={itemImage} alt={item.name ?? "Producto"} />
+                    <OrderItemThumb
+                      snapshotImage={snapshotImage}
+                      fallbackImage={fallbackImage}
+                      alt={item.name ?? "Producto"}
+                    />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium text-zinc-900">
                         {item.name ?? "Producto"}
