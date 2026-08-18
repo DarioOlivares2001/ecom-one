@@ -18,16 +18,30 @@ export interface GuardedClaim {
   pattern: RegExp;
 }
 
+/** Fuente única de verdad del patrón de dimensiones — reusado también por `extractExplicitDimensions`. */
+const DIMENSIONS_PATTERN_SOURCE = String.raw`\b\d+\s*[x×]\s*\d+\s*[x×]\s*\d+\s*cm\b`;
+
 export const GUARDED_CLAIMS: GuardedClaim[] = [
   { id: "power", label: "potencia", pattern: /\b\d+\s*w(atts?)?\b/gi },
-  { id: "dimensions", label: "medidas", pattern: /\b\d+\s*[x×]\s*\d+\s*[x×]\s*\d+\s*cm\b/gi },
+  { id: "dimensions", label: "medidas", pattern: new RegExp(DIMENSIONS_PATTERN_SOURCE, "gi") },
   { id: "timer", label: "temporizador", pattern: /\btemporizador(es)?\b/gi },
   { id: "universal_plug", label: "enchufe universal", pattern: /\benchufe\s+universal\b/gi },
   { id: "voltage", label: "voltaje", pattern: /\b\d+\s*v(oltios?)?\b/gi },
   { id: "certification", label: "certificación", pattern: /\bcertificaci[oó]n(es)?\b|\bcertificad[oa]\b|\biso\s?\d{3,5}\b/gi },
   { id: "warranty", label: "garantía", pattern: /\bgarant[ií]a\b/gi },
   { id: "medical", label: "uso médico/salud", pattern: /\b(cura|trata|alivia|terap[eé]utic\w*|medicinal)\b/gi },
+  { id: "capacity", label: "capacidad de carga", pattern: /\bcapacidad\s+de\s+carga\b|\b\d+\s*(l|litros|kg)\s+de\s+capacidad\b/gi },
+  { id: "uv", label: "UV", pattern: /\buv\b/gi },
+  { id: "electrical_safety", label: "seguridad eléctrica", pattern: /\bseguridad\s+el[eé]ctrica\b/gi },
+  { id: "drying_time", label: "tiempo de secado", pattern: /\bsec[ao](do)?\s+en\s+\d*\s*minutos?\b|\bseca(do)?\s+en\s+minutos\b/gi },
+  { id: "delivery_promise", label: "promesa de despacho", pattern: /\bentrega\s+(r[aá]pida|garantizada|en\s+\d+\s*(horas?|d[ií]as?))\b|\bdespacho\s+(gratis|express|garantizado)(\s+garantizado)?\b/gi },
 ];
+
+/** Devuelve el primer texto de dimensiones explícitas (ej. "29 x 22 x 10 cm") encontrado, o null si no hay ninguno. */
+export function extractExplicitDimensions(text: string): string | null {
+  const match = text.match(new RegExp(DIMENSIONS_PATTERN_SOURCE, "i"));
+  return match ? match[0] : null;
+}
 
 function hasMatch(text: string, pattern: RegExp): boolean {
   pattern.lastIndex = 0;

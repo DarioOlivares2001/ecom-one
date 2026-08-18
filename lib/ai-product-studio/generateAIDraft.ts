@@ -13,10 +13,11 @@ import {
 } from "./schema";
 import { filterSupplierLines, looksLikeGenericHeading, NAME_PLACEHOLDER, truncate } from "./textFilters";
 import { slugify } from "./slugify";
-import { enforceAnchoredClaims } from "./specClaims";
+import { enforceAnchoredClaims, extractExplicitDimensions } from "./specClaims";
 import { getAIProductStudioModel, getOpenAIApiKey, isAIProductStudioEnabled } from "./openaiConfig";
 const REQUEST_TIMEOUT_MS = 45_000;
 const MAX_SECTIONS = 8;
+const GALLERY_FALLBACK_NOTICE = "Se conservó tu selección de galería.";
 
 /**
  * Interfaz mínima que necesitamos del cliente de OpenAI — permite inyectar
@@ -27,6 +28,15 @@ export interface AIProductStudioOpenAIClient {
   responses: {
     create: (params: Record<string, unknown>, options?: { timeout?: number }) => Promise<{ output_text?: string }>;
   };
+}
+
+// ─── Referencias de imagen seguras (image_1, image_2, ...) ───────────────────
+// El modelo NUNCA ve ni devuelve una URL de imagen — solo estos IDs. Así es
+// estructuralmente imposible que "invente" o distorsione una URL: cualquier
+// ID que no esté en este mapa se descarta en `resolveImageId`, nunca se deja
+// pasar una URL cruda que el modelo hubiera escrito.
+function buildImageRefs(selectedImages: string[]): { id: string; url: string }[] {
+  return selectedImages.map((url, i) => ({ id: `image_${i + 1}`, url }));
 }
 
 // ─── Schema del output que se le exige al modelo (subconjunto seguro) ────────
@@ -52,14 +62,14 @@ const aiModelBenefitItemSchema = z.object({
 const aiModelSingleImageDataSchema = z.object({
   heading: z.string().max(80),
   description: z.string().max(2000),
-  image_url: z.string(),
+  imageId: z.string().nullable(),
   alt: z.string().max(180),
 });
 
 const aiModelBenefitsDataSchema = z.object({
   heading: z.string().max(80),
   description: z.string().max(2000),
-  image_url: z.string(),
+  imageId: z.string().nullable(),
   alt: z.string().max(180),
   items: z.array(aiModelBenefitItemSchema).min(1).max(6),
 });
@@ -77,26 +87,26 @@ const aiModelOutputSchema = z.object({
   tags: z.array(z.string().max(30)).max(10),
   descriptionHtml: z.string().max(4000),
   productSections: z.array(aiModelSectionSchema).max(MAX_SECTIONS),
-  galleryImageUrls: z.array(z.string()).max(6),
+  galleryImageIds: z.array(z.string()).max(6),
   detectedFacts: z.array(detectedFactSchema).max(30),
   claimsToAvoid: z.array(z.string().max(200)).max(20),
   fieldsNeedingConfirmation: z.array(z.string().max(40)).max(10),
 });
 type AIModelOutput = z.infer<typeof aiModelOutputSchema>;
 
-// ─── Prompt del sistema (reglas 1-8 del Estudio IA de Producto) ──────────────
+// ─── Prompt del sistema (reglas del Estudio IA de Producto) ──────────────────
 
 const SYSTEM_PROMPT = `Eres el redactor del "Estudio IA de Producto" de una tienda online chilena. Tu única tarea es transformar el texto crudo de un proveedor (y, si se entregan, fotos del producto) en un borrador estructurado de ficha de producto para que un administrador humano lo revise, edite y recién después decida guardarlo. Nunca guardas ni publicas nada tú mismo.
 
 Reglas obligatorias, sin excepción:
 
-1. Escribe una ficha persuasiva, clara y profesional, en español de Chile.
+1. Escribe una ficha persuasiva, clara y profesional, en español de Chile. El nombre propuesto debe ser breve y vendible — no repitas adjetivos del texto del proveedor de forma redundante (ej. si el texto ya dice "portátil" en el nombre, no lo repitas dos veces ni lo fuerces si suena artificial). La descripción ("descriptionHtml") debe tener 2 a 3 párrafos concretos (envueltos en <p>), nunca relleno genérico. Cada beneficio debe ser una frase clara y directa (título corto + una oración), nunca un párrafo largo.
 2. Puedes usar las imágenes ÚNICAMENTE para afirmar aspectos visualmente observables: color, forma, uso visible, ambiente, composición. Una foto NUNCA es evidencia suficiente para afirmar materiales exactos, medidas numéricas, potencia, certificaciones ni ninguna especificación técnica — aunque "se vea" de cierto material, eso no confirma la especificación real.
-3. Especificaciones técnicas, potencia, medidas, material, garantía, envío, certificaciones, compatibilidad, salud o seguridad SOLO pueden venir explícitamente del texto del proveedor que se te entrega. Si el texto no lo menciona, no lo afirmes — jamás.
+3. Especificaciones técnicas, potencia, medidas, material, garantía, envío/tiempos de despacho, certificaciones, compatibilidad, capacidad de carga, radiación UV, seguridad eléctrica, tiempos de secado ("en X minutos"), salud o seguridad SOLO pueden venir explícitamente del texto del proveedor que se te entrega. Si el texto no lo menciona, no lo afirmes — jamás, ni siquiera como sugerencia.
 4. Elimina cualquier contenido del proveedor que no le corresponde a esta tienda: contacto/WhatsApp del proveedor, links externos, "confirmar stock/inventario", ofertas o descuentos ajenos, despacho a cargo de terceros, garantías de Dropi u otro proveedor, instrucciones administrativas internas. Ese contenido no debe aparecer en ningún campo de tu respuesta.
-5. Si no hay evidencia suficiente para un dato, NO lo inventes: agrégalo a "fieldsNeedingConfirmation" (si falta un campo entero, ej. "category") o a "claimsToAvoid" (si es una afirmación específica que no puedes hacer).
-6. Elige, de las imágenes ya subidas que se te entregan, cuáles son las más adecuadas para la galería y para cada bloque — nunca generes, modifiques ni inventes una URL de imagen nueva. "galleryImageUrls" y cualquier "image_url" dentro de un bloque deben ser exactamente URLs de las imágenes que se te entregaron.
-7. Solo puedes proponer bloques de tipo "benefits", "usage", "measurements" o "versatility", y solo si hay evidencia real que los respalde. NUNCA generes bloques de FAQ, testimonios, comparador "antes/después" ni certificaciones — esos requieren inventar preguntas, reseñas de clientes falsas o decidir arbitrariamente qué imagen es "antes"/"después".
+5. Si no hay evidencia suficiente para un dato, NO lo inventes: agrégalo a "fieldsNeedingConfirmation" (si falta un campo entero, ej. "category") o a "claimsToAvoid" (si es una afirmación específica que no puedes hacer). "category" y "tags" son propuestas editables y opcionales, no obligatorias — si no tienes confianza razonable, déjalas vacías en vez de adivinar.
+6. Cada imagen que recibes viene etiquetada con un ID exacto (image_1, image_2, image_3...), anunciado justo antes de la imagen en el mensaje. NUNCA generes, escribas ni inventes una URL de imagen — no las conoces y no existen para ti. Para "galleryImageIds" y para el campo "imageId" de cualquier bloque debes responder SOLO con estos IDs exactos (ej. "image_1"), nunca con una URL, nunca con un ID que no te hayan mostrado. Si ningún ID es adecuado para un bloque en particular, usa "imageId": null. Elige, de los IDs entregados, cuáles son los más adecuados para la galería y para cada bloque.
+7. Solo puedes proponer bloques de tipo "benefits", "usage", "measurements" o "versatility", y solo si hay evidencia real que los respalde. NUNCA generes bloques de FAQ, testimonios, comparador "antes/después" ni certificaciones — esos requieren inventar preguntas, reseñas de clientes falsas o decidir arbitrariamente qué imagen es "antes"/"después". Si el texto del proveedor incluye medidas o dimensiones explícitas (ej. "29 x 22 x 10 cm", "40cm de alto"), DEBES crear un bloque "measurements" ("Medidas") con un título claro y un texto que explique esas dimensiones tal como las da el texto, sin inventar unidades ni cifras adicionales — no lo dejes solo mencionado dentro de la descripción general ni lo omitas.
 8. Nunca uses un encabezado genérico de sección ("Características destacadas", "Descripción", "Ficha técnica", "Información del producto", etc.) como si fuera el nombre del producto. Si no puedes inferir con confianza un nombre real de producto, usa exactamente el texto "Nombre por confirmar".
 
 Para cada afirmación que incluyas en "detectedFacts", indica su fuente: "supplier_text" si viene del texto del proveedor, "image_visual" si es una observación puramente visual de una imagen (nunca uses "image_visual" para una especificación técnica).
@@ -107,12 +117,14 @@ function buildUserPrompt(input: {
   cleanedSupplierText: string;
   commercialGoal?: string;
   tone: string;
-  imageCount: number;
+  imageIds: string[];
 }): string {
   const parts: string[] = [
     `Tono solicitado: ${input.tone}.`,
     input.commercialGoal ? `Instrucción comercial del admin: ${input.commercialGoal}` : "Sin instrucción comercial adicional.",
-    `Cantidad de imágenes entregadas: ${input.imageCount} (en el mismo orden en que aparecen en el mensaje).`,
+    input.imageIds.length > 0
+      ? `Imágenes entregadas, en este orden: ${input.imageIds.join(", ")}. Para galería y bloques debes responder solo con estos IDs exactos.`
+      : "No se entregaron imágenes.",
     "",
     "Texto del proveedor (ya filtrado de contenido que no corresponde a la tienda):",
     input.cleanedSupplierText,
@@ -179,12 +191,23 @@ export async function generateAIDraft(
   const cleanedSupplierText = usableLines.join("\n");
   const cleanedSupplierTextLower = cleanedSupplierText.toLowerCase();
 
+  const imageRefs = buildImageRefs(input.selectedImages);
+
   const userPrompt = buildUserPrompt({
     cleanedSupplierText,
     commercialGoal: input.commercialGoal?.trim() || undefined,
     tone: input.tone,
-    imageCount: input.selectedImages.length,
+    imageIds: imageRefs.map((r) => r.id),
   });
+
+  // Contenido multimodal: el texto, y luego cada imagen precedida por un
+  // rótulo con su ID — así el modelo puede referirse a "image_2" sabiendo
+  // exactamente a qué foto corresponde, sin necesitar (ni poder) ver su URL.
+  const content: Record<string, unknown>[] = [{ type: "input_text", text: userPrompt }];
+  for (const ref of imageRefs) {
+    content.push({ type: "input_text", text: `Imagen ${ref.id}:` });
+    content.push({ type: "input_image", image_url: ref.url, detail: "auto" });
+  }
 
   let rawOutputText: string;
   try {
@@ -192,19 +215,7 @@ export async function generateAIDraft(
       {
         model,
         instructions: SYSTEM_PROMPT,
-        input: [
-          {
-            role: "user",
-            content: [
-              { type: "input_text", text: userPrompt },
-              ...input.selectedImages.map((url) => ({
-                type: "input_image" as const,
-                image_url: url,
-                detail: "auto" as const,
-              })),
-            ],
-          },
-        ],
+        input: [{ role: "user", content }],
         text: { format: zodTextFormat(aiModelOutputSchema, "product_draft") },
         store: false,
       },
@@ -240,7 +251,16 @@ export async function generateAIDraft(
     return { ok: false, code: "invalid_response", error: "La respuesta de OpenAI no tiene el formato esperado." };
   }
 
-  const draft = assembleDraft(modelResult.data, input, cleanedSupplierTextLower, ignoredSupplierLines, generatedAt, model);
+  const draft = assembleDraft(
+    modelResult.data,
+    input,
+    imageRefs,
+    cleanedSupplierText,
+    cleanedSupplierTextLower,
+    ignoredSupplierLines,
+    generatedAt,
+    model
+  );
 
   const finalResult = aiProductDraftSchema.safeParse(draft);
   if (!finalResult.success) {
@@ -254,24 +274,31 @@ export async function generateAIDraft(
 /**
  * Ensambla el `AIProductDraft` final desde la salida cruda del modelo:
  *  - `slug` se calcula en servidor desde `name`, nunca desde el modelo.
- *  - Cada `image_url` (galería y bloques) se valida contra las imágenes
- *    REALMENTE seleccionadas por el admin — cualquier URL que no calce se
- *    descarta, nunca se deja pasar.
+ *  - Cada `imageId` (galería y bloques) se resuelve a una URL SOLO si
+ *    corresponde a una de las imágenes que el admin realmente seleccionó —
+ *    cualquier ID desconocido se descarta, nunca se acepta una URL directa
+ *    del modelo (el modelo no puede escribir URLs, ver `aiModelOutputSchema`).
  *  - `id`/`enabled`/`order` de cada bloque los asigna el servidor.
+ *  - Si el texto trae dimensiones explícitas y el modelo no generó un bloque
+ *    "measurements", se agrega uno automáticamente (regla 7 del prompt,
+ *    reforzada acá como red de seguridad determinística).
  *  - `enforceAnchoredClaims` vuelve a barrer specs técnicas (potencia,
  *    medidas, temporizador, enchufe universal, certificaciones, garantía,
- *    salud) que el modelo hubiera mencionado sin respaldo en el texto — red
- *    de seguridad, no confía en que el prompt haya bastado.
+ *    capacidad de carga, UV, seguridad eléctrica, tiempo de secado, promesas
+ *    de despacho, salud) que el modelo hubiera mencionado sin respaldo en el
+ *    texto — red de seguridad, no confía en que el prompt haya bastado.
  */
 function assembleDraft(
   model: AIModelOutput,
   input: AIProductStudioInput,
+  imageRefs: { id: string; url: string }[],
+  cleanedSupplierText: string,
   cleanedSupplierTextLower: string,
   ignoredSupplierLines: string[],
   generatedAt: string,
   modelName: string
 ): AIProductDraft {
-  const allowedImages = new Set(input.selectedImages);
+  const idToUrl = new Map(imageRefs.map((r) => [r.id, r.url]));
   const warnings: string[] = [];
 
   // Defensa en profundidad: aunque el prompt ya instruye al modelo a nunca
@@ -289,28 +316,42 @@ function assembleDraft(
     fieldsNeedingConfirmation.push("slug");
   }
 
-  let galleryImageUrls = model.galleryImageUrls.filter((u) => allowedImages.has(u));
-  if (galleryImageUrls.length === 0) {
-    warnings.push("El modelo no propuso imágenes válidas para la galería; se usaron todas las seleccionadas, en el orden elegido.");
-    galleryImageUrls = [...input.selectedImages];
-  } else if (galleryImageUrls.length !== model.galleryImageUrls.length) {
-    warnings.push("Se descartaron una o más imágenes propuestas por el modelo que no pertenecían a las seleccionadas.");
+  let danglingImageIds = 0;
+  /** Resuelve un ID de imagen propuesto por el modelo a su URL real — nunca acepta nada que no esté en `idToUrl` (nunca una URL directa: el modelo no las conoce). */
+  function resolveImageId(id: string | null): string {
+    if (!id) return "";
+    const url = idToUrl.get(id);
+    if (!url) {
+      danglingImageIds += 1;
+      return "";
+    }
+    return url;
   }
 
-  let danglingImageUrls = 0;
-  function sanitizeImageUrl(raw: string): string {
-    if (!raw) return "";
-    if (allowedImages.has(raw)) return raw;
-    danglingImageUrls += 1;
-    return "";
+  let galleryImageUrls: string[];
+  if (model.galleryImageIds.length === 0) {
+    galleryImageUrls = [...input.selectedImages];
+    warnings.push(GALLERY_FALLBACK_NOTICE);
+  } else {
+    const resolved = model.galleryImageIds.map(resolveImageId).filter((u): u is string => Boolean(u));
+    if (resolved.length === 0) {
+      galleryImageUrls = [...input.selectedImages];
+      warnings.push(GALLERY_FALLBACK_NOTICE);
+    } else {
+      galleryImageUrls = resolved;
+      if (resolved.length !== model.galleryImageIds.length) {
+        warnings.push("Se descartaron uno o más IDs de imagen inválidos propuestos por el modelo; se usó el resto en el orden propuesto.");
+      }
+    }
   }
+
   /** Texto opcional: "" (el modelo no tenía nada que decir) se guarda como campo ausente, no como string vacío. */
   function cleanOptionalText(raw: string): string | undefined {
     const trimmed = raw.trim();
     return trimmed.length > 0 ? trimmed : undefined;
   }
 
-  const productSections: ProductSection[] = model.productSections.slice(0, MAX_SECTIONS).map((section, i): ProductSection => {
+  let productSections: ProductSection[] = model.productSections.slice(0, MAX_SECTIONS).map((section, i): ProductSection => {
     const base = { id: `ai-${section.type}-${i}`, enabled: true as const, order: i };
     if (section.type === "benefits") {
       return {
@@ -319,7 +360,7 @@ function assembleDraft(
         data: {
           heading: cleanOptionalText(section.data.heading),
           description: cleanOptionalText(section.data.description),
-          image_url: sanitizeImageUrl(section.data.image_url),
+          image_url: resolveImageId(section.data.imageId),
           alt: cleanOptionalText(section.data.alt),
           items: section.data.items,
         },
@@ -331,13 +372,39 @@ function assembleDraft(
       data: {
         heading: cleanOptionalText(section.data.heading),
         description: cleanOptionalText(section.data.description),
-        image_url: sanitizeImageUrl(section.data.image_url),
+        image_url: resolveImageId(section.data.imageId),
         alt: cleanOptionalText(section.data.alt),
       },
     };
   });
-  if (danglingImageUrls > 0) {
-    warnings.push(`Se descartó la imagen propuesta por el modelo en ${danglingImageUrls} bloque(s) por no pertenecer a las imágenes seleccionadas.`);
+  if (danglingImageIds > 0) {
+    warnings.push(`Se descartó el ID de imagen propuesto por el modelo en ${danglingImageIds} bloque(s) por no corresponder a una imagen seleccionada.`);
+  }
+
+  // Red de seguridad determinística: si el texto trae dimensiones explícitas
+  // y el modelo no generó un bloque "measurements", se agrega acá — no
+  // depende de que el modelo haya seguido la regla 7 del prompt al pie de la letra.
+  const hasMeasurementsSection = productSections.some((s) => s.type === "measurements");
+  if (!hasMeasurementsSection && productSections.length < MAX_SECTIONS) {
+    const dimensions = extractExplicitDimensions(cleanedSupplierText);
+    if (dimensions) {
+      productSections = [
+        ...productSections,
+        {
+          id: `ai-measurements-auto-${productSections.length}`,
+          type: "measurements",
+          enabled: true,
+          order: productSections.length,
+          data: {
+            heading: "Medidas",
+            description: `Dimensiones: ${dimensions}.`,
+            image_url: galleryImageUrls[0] ?? "",
+            alt: undefined,
+          },
+        },
+      ];
+      warnings.push('Se agregó automáticamente un bloque "Medidas" porque el texto del proveedor incluye dimensiones explícitas que no estaban reflejadas en ningún bloque.');
+    }
   }
 
   const anchored = enforceAnchoredClaims({ descriptionHtml: model.descriptionHtml, productSections }, cleanedSupplierTextLower);
