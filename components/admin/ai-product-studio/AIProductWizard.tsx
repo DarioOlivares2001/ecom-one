@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
@@ -8,6 +8,8 @@ import {
   ArrowRight,
   CheckCircle2,
   ChevronDown,
+  Eye,
+  FileText,
   Info,
   Sparkles,
   X,
@@ -19,7 +21,6 @@ import { toast } from "@/components/ui/Toast";
 import { ProductMediaLibrary } from "@/components/admin/ProductMediaLibrary";
 import { ProductGallerySelector } from "@/components/admin/ProductGallerySelector";
 import { deleteProductImage } from "@/lib/admin/deleteProductImage";
-import { generateDemoDraft } from "@/lib/ai-product-studio/generateDemoDraft";
 import {
   AI_PRODUCT_STUDIO_TONES,
   AI_PRODUCT_STUDIO_TONE_LABELS,
@@ -41,13 +42,15 @@ const STEP_LABELS: Record<Step, string> = {
 
 const IGNORED_TOPICS = [
   "WhatsApp u otro contacto directo del proveedor",
-  "Llamadas o avisos para \"confirmar stock\"",
+  "Avisos para \"confirmar stock\" o \"confirmar inventario\"",
   "Ofertas, descuentos o promociones del proveedor",
-  "Entregas o despachos a cargo de terceros",
+  "Entregas o despachos a cargo de terceros (ej. \"entrega en 24 horas\")",
   "URLs externas (catálogos, redes del proveedor, etc.)",
   "Instrucciones administrativas internas (SKU, facturación, bodega)",
-  "Garantías del proveedor ajenas a las políticas de esta tienda",
+  "Garantías del proveedor o de Dropi ajenas a las políticas de esta tienda",
 ];
+
+const GENERATE_TIMEOUT_MS = 60_000;
 
 const inputCls =
   "w-full rounded-[var(--radius-sm)] border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:ring-2 focus:ring-zinc-900";
@@ -59,8 +62,6 @@ function sectionLabel(type: string): string {
 const PENDING_FIELD_LABELS: Record<string, string> = {
   name: "Nombre",
   slug: "Slug",
-  meta_title: "Meta título",
-  meta_desc: "Meta descripción",
   category: "Categoría",
 };
 
@@ -68,6 +69,7 @@ export function AIProductWizard() {
   const router = useRouter();
   const [step, setStep] = useState<Step>(1);
   const [exiting, setExiting] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
 
   // ── Paso 1 ───────────────────────────────────────────────────────────────
   const [supplierText, setSupplierText] = useState("");
@@ -112,9 +114,14 @@ export function AIProductWizard() {
   const [excludedSectionIds, setExcludedSectionIds] = useState<Set<string>>(new Set());
   const [editedCategory, setEditedCategory] = useState("");
   const [editedTags, setEditedTags] = useState("");
+  const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
 
-  const includedSections = draft ? draft.product_sections.filter((s) => !excludedSectionIds.has(s.id)) : [];
+  const includedSections = draft ? draft.productSections.filter((s) => !excludedSectionIds.has(s.id)) : [];
+
+  useEffect(() => {
+    return () => abortRef.current?.abort();
+  }, []);
 
   function toggleSection(id: string) {
     setExcludedSectionIds((prev) => {
@@ -139,7 +146,7 @@ export function AIProductWizard() {
     setStep(2);
   }
 
-  function goToPreview() {
+  async function goToPreview() {
     if (imagesUploading) {
       toast.error("Espera a que terminen de subirse las imágenes.");
       return;
@@ -161,19 +168,49 @@ export function AIProductWizard() {
       return;
     }
 
-    const generated = generateDemoDraft(parsedInput.data, new Date().toISOString());
-    const parsedDraft = aiProductDraftSchema.safeParse(generated);
-    if (!parsedDraft.success) {
-      console.error("[ai-product-studio] borrador generado inválido:", parsedDraft.error);
-      setGenerateError("El generador produjo un borrador inválido. Revisa la consola para más detalles.");
-      return;
-    }
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const timeoutId = setTimeout(() => controller.abort(), GENERATE_TIMEOUT_MS);
 
-    setDraft(parsedDraft.data);
-    setExcludedSectionIds(new Set());
-    setEditedCategory(parsedDraft.data.category ?? "");
-    setEditedTags(parsedDraft.data.tags.join(", "));
-    setStep(3);
+    setGenerating(true);
+    try {
+      const res = await fetch("/api/admin/ai-product-studio/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(parsedInput.data),
+        signal: controller.signal,
+      });
+      const body = (await res.json().catch(() => ({}))) as { draft?: unknown; error?: string };
+
+      if (!res.ok || !body.draft) {
+        setGenerateError(body.error ?? "No se pudo generar el borrador. Intenta de nuevo.");
+        return;
+      }
+
+      const parsedDraft = aiProductDraftSchema.safeParse(body.draft);
+      if (!parsedDraft.success) {
+        console.error("[ai-product-studio] borrador recibido inválido:", parsedDraft.error);
+        setGenerateError("El servidor devolvió un borrador con formato inválido.");
+        return;
+      }
+
+      setDraft(parsedDraft.data);
+      setExcludedSectionIds(new Set());
+      setEditedCategory(parsedDraft.data.category ?? "");
+      setEditedTags(parsedDraft.data.tags.join(", "));
+      setStep(3);
+    } catch (err) {
+      if (controller.signal.aborted) {
+        setGenerateError("La generación tardó demasiado y se canceló. Intenta de nuevo.");
+      } else {
+        console.error("[ai-product-studio] error de red generando el borrador:", err);
+        setGenerateError("No se pudo conectar con el servidor. Intenta de nuevo.");
+      }
+    } finally {
+      clearTimeout(timeoutId);
+      abortRef.current = null;
+      setGenerating(false);
+    }
   }
 
   // ── Cancelar: limpieza best-effort de imágenes huérfanas ─────────────────
@@ -208,7 +245,7 @@ export function AIProductWizard() {
         .split(",")
         .map((t) => t.trim())
         .filter(Boolean),
-      product_sections: includedSections,
+      productSections: includedSections,
     };
 
     writeAIStudioBridge({ draft: finalDraft, productMedia });
@@ -235,8 +272,8 @@ export function AIProductWizard() {
         <div className="ml-1 flex items-center gap-2">
           <Sparkles className="h-4 w-4 text-zinc-700" aria-hidden />
           <h1 className="text-sm font-bold text-zinc-900">Crear producto con IA</h1>
-          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
-            Modo demo
+          <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700">
+            Generación con IA
           </span>
         </div>
 
@@ -268,10 +305,10 @@ export function AIProductWizard() {
       <div className="mx-auto w-full max-w-3xl flex-1 px-4 py-6 sm:px-6">
         {step === 1 && (
           <div className="flex flex-col gap-5">
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              <span className="font-semibold">Modo demo:</span> este asistente genera un borrador localmente,
-              sin conectarse a ningún proveedor de IA todavía. Nunca inventa materiales, medidas,
-              certificaciones, garantías, stock, descuentos ni beneficios médicos.
+            <div className="rounded-lg border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-800">
+              <span className="font-semibold">Generación con IA:</span> revisa todo antes de aplicar y guardar.
+              El modelo nunca inventa materiales, medidas, certificaciones, garantías, stock, descuentos ni
+              beneficios médicos — si el texto no lo respalda, queda marcado como pendiente en vez de inventado.
             </div>
 
             <div className="flex flex-col gap-1.5">
@@ -332,8 +369,8 @@ export function AIProductWizard() {
                 ))}
               </ul>
               <p className="mt-2 text-xs text-zinc-400">
-                Estos datos se detectan y descartan automáticamente antes de generar la ficha — nunca aparecen
-                en la descripción, beneficios ni bloques del producto.
+                Estos datos se detectan y descartan automáticamente antes de generar la ficha (incluso antes de
+                enviarse al modelo) — nunca aparecen en la descripción, beneficios ni bloques del producto.
               </p>
             </details>
           </div>
@@ -344,7 +381,8 @@ export function AIProductWizard() {
             <div className="rounded-lg border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-600">
               Sube o arrastra las imágenes del producto. Se cargan directamente a la biblioteca de medios —
               no necesitas volver al formulario manual para esto. Luego elige y ordena cuáles serán la
-              galería pública; la primera será la portada y también alimentan los bloques generados.
+              galería pública; la primera será la portada y también alimentan los bloques generados (hasta 6
+              imágenes se envían al modelo).
             </div>
 
             <section className="rounded-xl border border-zinc-200 bg-white shadow-sm">
@@ -386,39 +424,59 @@ export function AIProductWizard() {
 
         {step === 3 && draft && (
           <div className="flex flex-col gap-5">
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              <span className="font-semibold">Modo demo · generado {new Date(draft.meta.generatedAt).toLocaleString("es-CL")}</span>
-              {" — "}revisa y edita todo antes de aplicar. Nada se guarda ni se publica en este paso.
+            <div className="rounded-lg border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-800">
+              <span className="font-semibold">
+                Generación con IA{draft.meta.model ? ` (${draft.meta.model})` : ""} · {new Date(draft.meta.generatedAt).toLocaleString("es-CL")}
+              </span>
+              {" — "}revisa todo antes de aplicar y guardar. Nada se guarda ni se publica en este paso.
             </div>
 
-            {draft.meta.detectedFacts.length > 0 && (
+            {draft.meta.warnings.length > 0 && (
+              <div className="flex flex-col gap-1 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-600">
+                {draft.meta.warnings.map((w, i) => (
+                  <div key={i} className="flex items-start gap-1.5">
+                    <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-amber-500" aria-hidden />
+                    <span>{w}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {draft.detectedFacts.length > 0 && (
               <section className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
                 <h3 className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-emerald-700">
                   <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
                   Datos detectados del proveedor
                 </h3>
-                <ul className="list-inside list-disc space-y-0.5 text-xs text-emerald-800">
-                  {draft.meta.detectedFacts.map((fact, i) => (
-                    <li key={i}>{fact}</li>
+                <ul className="space-y-1 text-xs text-emerald-800">
+                  {draft.detectedFacts.map((fact, i) => (
+                    <li key={i} className="flex items-start gap-1.5">
+                      {fact.source === "image_visual" ? (
+                        <Eye className="mt-0.5 h-3 w-3 shrink-0" aria-label="Observación visual" />
+                      ) : (
+                        <FileText className="mt-0.5 h-3 w-3 shrink-0" aria-label="Texto del proveedor" />
+                      )}
+                      <span>{fact.claim}</span>
+                    </li>
                   ))}
                 </ul>
               </section>
             )}
 
-            {(draft.meta.pendingFields.length > 0 || draft.meta.claimsToAvoid.length > 0) && (
+            {(draft.fieldsNeedingConfirmation.length > 0 || draft.claimsToAvoid.length > 0) && (
               <section className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3">
                 <h3 className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-zinc-600">
                   <AlertTriangle className="h-3.5 w-3.5 text-amber-500" aria-hidden />
-                  Campos por confirmar
+                  Campos por confirmar y afirmaciones omitidas
                 </h3>
-                {draft.meta.pendingFields.length > 0 && (
+                {draft.fieldsNeedingConfirmation.length > 0 && (
                   <p className="text-xs text-zinc-600">
-                    {draft.meta.pendingFields.map((f) => PENDING_FIELD_LABELS[f] ?? f).join(", ")}
+                    {draft.fieldsNeedingConfirmation.map((f) => PENDING_FIELD_LABELS[f] ?? f).join(", ")}
                   </p>
                 )}
-                {draft.meta.claimsToAvoid.length > 0 && (
+                {draft.claimsToAvoid.length > 0 && (
                   <ul className="mt-1.5 list-inside list-disc space-y-0.5 text-xs text-zinc-500">
-                    {draft.meta.claimsToAvoid.map((c, i) => (
+                    {draft.claimsToAvoid.map((c, i) => (
                       <li key={i}>{c}</li>
                     ))}
                   </ul>
@@ -426,14 +484,14 @@ export function AIProductWizard() {
               </section>
             )}
 
-            {draft.meta.ignoredSupplierLines.length > 0 && (
+            {draft.ignoredSupplierLines.length > 0 && (
               <details className="rounded-lg border border-zinc-200 bg-white px-4 py-3 text-xs text-zinc-500">
                 <summary className="cursor-pointer font-medium text-zinc-600">
-                  {draft.meta.ignoredSupplierLines.length} línea(s) del texto se ignoraron (contacto, stock,
-                  ofertas, etc.)
+                  {draft.ignoredSupplierLines.length} línea(s) del texto se ignoraron (contacto, stock, ofertas,
+                  etc.)
                 </summary>
                 <ul className="mt-2 list-inside list-disc space-y-0.5">
-                  {draft.meta.ignoredSupplierLines.map((l, i) => (
+                  {draft.ignoredSupplierLines.map((l, i) => (
                     <li key={i}>{l}</li>
                   ))}
                 </ul>
@@ -445,12 +503,12 @@ export function AIProductWizard() {
               <input
                 className={clsx(
                   inputCls,
-                  draft.meta.pendingFields.includes("name") && "border-amber-400 bg-amber-50"
+                  draft.fieldsNeedingConfirmation.includes("name") && "border-amber-400 bg-amber-50"
                 )}
                 value={draft.name}
                 onChange={(e) => updateDraftField("name", e.target.value)}
               />
-              {draft.meta.pendingFields.includes("name") && (
+              {draft.fieldsNeedingConfirmation.includes("name") && (
                 <p className="text-xs text-amber-600">
                   No se detectó un nombre confiable — reemplaza este texto antes de guardar el producto.
                 </p>
@@ -471,8 +529,8 @@ export function AIProductWizard() {
               <label className="text-sm font-medium text-zinc-700">Descripción (HTML simple)</label>
               <textarea
                 className={clsx(inputCls, "min-h-[140px] resize-y font-mono text-xs")}
-                value={draft.description}
-                onChange={(e) => updateDraftField("description", e.target.value)}
+                value={draft.descriptionHtml}
+                onChange={(e) => updateDraftField("descriptionHtml", e.target.value)}
               />
             </div>
 
@@ -492,18 +550,12 @@ export function AIProductWizard() {
               </div>
             </div>
 
-            <p className="text-xs text-zinc-400">
-              Meta título y meta descripción se generaron pero el formulario manual todavía no tiene esos
-              campos — ver AI_PRODUCT_STUDIO_PLAN.md. Meta título: <em>{draft.meta_title || "(vacío)"}</em>.
-              Meta descripción: <em>{draft.meta_desc || "(vacío)"}</em>.
-            </p>
-
             <div className="flex flex-col gap-1.5">
               <label className="text-sm font-medium text-zinc-700">
-                Imágenes que se aplicarán a la galería ({draft.images.length})
+                Imágenes que se aplicarán a la galería ({draft.galleryImageUrls.length})
               </label>
               <div className="flex flex-wrap gap-2">
-                {draft.images.map((url, i) => (
+                {draft.galleryImageUrls.map((url, i) => (
                   <div key={url} className="relative h-14 w-14 overflow-hidden rounded-md border border-zinc-200">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={url} alt="" className="h-full w-full object-cover" />
@@ -519,15 +571,15 @@ export function AIProductWizard() {
 
             <div className="flex flex-col gap-2">
               <label className="text-sm font-medium text-zinc-700">
-                Bloques de la ficha ({includedSections.length} de {draft.product_sections.length} incluidos)
+                Bloques de la ficha ({includedSections.length} de {draft.productSections.length} incluidos)
               </label>
-              {draft.product_sections.length === 0 ? (
+              {draft.productSections.length === 0 ? (
                 <p className="text-xs text-zinc-400">
-                  No se generó ningún bloque (sin viñetas detectadas en el texto e insuficientes imágenes).
+                  No se generó ningún bloque (sin evidencia suficiente en el texto/imágenes).
                 </p>
               ) : (
                 <div className="flex flex-col divide-y divide-zinc-100 rounded-md border border-zinc-200 bg-white">
-                  {draft.product_sections.map((section) => {
+                  {draft.productSections.map((section) => {
                     const excluded = excludedSectionIds.has(section.id);
                     const heading =
                       "heading" in section.data && section.data.heading ? section.data.heading : sectionLabel(section.type);
@@ -570,14 +622,14 @@ export function AIProductWizard() {
       <div className="sticky bottom-0 flex items-center justify-between gap-2 border-t border-zinc-200 bg-white px-4 py-3.5 sm:px-6">
         <div>
           {step > 1 && (
-            <Button type="button" variant="secondary" onClick={() => setStep((s) => (s - 1) as Step)}>
+            <Button type="button" variant="secondary" onClick={() => setStep((s) => (s - 1) as Step)} disabled={generating}>
               <ArrowLeft className="h-4 w-4" />
               Atrás
             </Button>
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Button type="button" variant="ghost" onClick={handleExit} disabled={exiting}>
+          <Button type="button" variant="ghost" onClick={handleExit} disabled={exiting || generating}>
             <X className="h-4 w-4" />
             Cancelar
           </Button>
@@ -588,9 +640,9 @@ export function AIProductWizard() {
             </Button>
           )}
           {step === 2 && (
-            <Button type="button" onClick={goToPreview} loading={imagesUploading}>
+            <Button type="button" onClick={goToPreview} loading={generating || imagesUploading}>
               <Sparkles className="h-4 w-4" />
-              Generar borrador (demo)
+              {generating ? "Generando con IA…" : "Generar con IA"}
             </Button>
           )}
           {step === 3 && (

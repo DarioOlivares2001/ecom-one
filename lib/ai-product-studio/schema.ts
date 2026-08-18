@@ -2,24 +2,20 @@ import { z } from "zod";
 import { productSectionsSchema } from "@/lib/product/sections/types";
 
 /**
- * Estudio IA de Producto — Fase 1 (base local, sin proveedor externo).
+ * Estudio IA de Producto — contrato de entrada/salida.
  *
- * Contrato de entrada/salida del "borrador" que genera el estudio. La salida
- * (`aiProductDraftSchema`) usa exactamente los mismos tipos que ya persiste
- * `products`:
- *  - `images`      → mismo formato que `products.images` (array de URLs
+ * Fase 1 (`generateDemoDraft.ts`) y Fase 2 (`generateAIDraft.ts`, OpenAI real)
+ * producen el MISMO `AIProductDraft` — solo cambia `meta.mode` ("demo" vs
+ * "ai") y quién generó el contenido. La salida usa exactamente los mismos
+ * tipos que ya persiste `products`:
+ *  - `galleryImageUrls` → mismo formato que `products.images` (array de URLs
  *    públicas ya subidas, orden = orden de galería, portada = primera).
- *  - `product_sections` → reusa `productSectionsSchema` de
+ *  - `productSections`  → reusa `productSectionsSchema` de
  *    `lib/product/sections/types.ts` sin redefinirlo, así que cualquier
  *    borrador válido acá es, por construcción, un `product_sections` válido
  *    para guardar en la base — no hay dos formatos que puedan divergir.
- *  - El resto de los campos (`name`, `slug`, `description`, `category`,
- *    `meta_title`, `meta_desc`, `tags`) son texto plano/HTML simple, mismo
- *    tipo que las columnas homónimas de `products`.
- *
- * Esta fase NO llama a ningún proveedor de IA — ver `generateDemoDraft.ts`
- * para el generador local determinista, y `AI_PRODUCT_STUDIO_PLAN.md` para
- * el diseño de la integración real futura.
+ *  - `name`/`slug`/`category`/`tags`/`descriptionHtml` son texto plano/HTML
+ *    simple, mismo tipo que las columnas homónimas de `products`.
  */
 
 // ─── Entrada del estudio ──────────────────────────────────────────────────────
@@ -34,12 +30,18 @@ export const AI_PRODUCT_STUDIO_TONE_LABELS: Record<AIProductStudioTone, string> 
   practico: "Práctico",
 };
 
+export const MAX_SUPPLIER_TEXT_LENGTH = 6000;
+export const MAX_SELECTED_IMAGES = 6;
+
 export const aiProductStudioInputSchema = z.object({
   /** Texto/ficha tal como lo entrega el proveedor — la única fuente de hechos del producto. */
-  supplierText: z.string().trim().min(1, "Pega el texto o ficha del proveedor."),
+  supplierText: z.string().trim().min(1, "Pega el texto o ficha del proveedor.").max(MAX_SUPPLIER_TEXT_LENGTH, "El texto del proveedor es demasiado largo."),
   /** URLs elegidas desde `product_media` (biblioteca ya subida) — nunca se suben imágenes nuevas acá. */
-  selectedImages: z.array(z.string().url()).min(1, "Selecciona al menos una imagen de la biblioteca."),
-  /** Objetivo comercial libre y opcional (ej. "aumentar conversión en mobile"). Solo orienta tono/énfasis, nunca inventa datos. */
+  selectedImages: z
+    .array(z.string().url())
+    .min(1, "Selecciona al menos una imagen de la biblioteca.")
+    .max(MAX_SELECTED_IMAGES, `Selecciona como máximo ${MAX_SELECTED_IMAGES} imágenes.`),
+  /** Instrucción comercial libre y opcional (ej. "enfócalo en espacios pequeños"). Solo orienta tono/énfasis, nunca inventa datos. */
   commercialGoal: z.string().trim().max(240).optional(),
   tone: z.enum(AI_PRODUCT_STUDIO_TONES),
 });
@@ -47,60 +49,52 @@ export type AIProductStudioInput = z.infer<typeof aiProductStudioInputSchema>;
 
 // ─── Salida del estudio (borrador) ────────────────────────────────────────────
 
+export const AI_PRODUCT_STUDIO_MODES = ["demo", "ai"] as const;
+export type AIProductStudioMode = (typeof AI_PRODUCT_STUDIO_MODES)[number];
+
+export const DETECTED_FACT_SOURCES = ["supplier_text", "image_visual"] as const;
+export type DetectedFactSource = (typeof DETECTED_FACT_SOURCES)[number];
+
+export const detectedFactSchema = z.object({
+  claim: z.string().trim().min(1),
+  source: z.enum(DETECTED_FACT_SOURCES),
+});
+export type DetectedFact = z.infer<typeof detectedFactSchema>;
+
 /** Texto simple, recortado. Vacío es válido: significa "sin datos suficientes", nunca se rellena inventando. */
 const draftTextSchema = z.string().trim();
 
 export const aiProductDraftSchema = z.object({
-  /** Igual forma que `products.name`. Vacío si el texto de origen no trae un nombre reconocible. */
+  /** Igual forma que `products.name`. "Nombre por confirmar" si el texto/imágenes no traen un nombre reconocible. */
   name: draftTextSchema,
-  /** Igual forma que `products.slug`. Derivado de `name`; vacío si `name` está vacío. */
+  /** Igual forma que `products.slug`. SIEMPRE normalizado/derivado en servidor desde `name` — nunca se confía en lo que proponga el modelo. */
   slug: draftTextSchema,
-  /** HTML simple (párrafos), igual forma que `products.description`. */
-  description: draftTextSchema,
-  /** Igual forma que `products.meta_title`. Aún sin campo en el formulario admin — ver AI_PRODUCT_STUDIO_PLAN.md. */
-  meta_title: draftTextSchema.max(70).optional(),
-  /** Igual forma que `products.meta_desc`. */
-  meta_desc: draftTextSchema.max(160).optional(),
-  /** Igual forma que `products.category`. El generador demo nunca la infiere (evita adivinar un rubro). */
-  category: draftTextSchema.optional(),
-  /** Igual forma que `products.tags`. El generador demo siempre la deja vacía (evita inventar palabras clave). */
+  /** Igual forma que `products.category`. Vacía si no hay evidencia suficiente para elegir un rubro. */
+  category: draftTextSchema.default(""),
+  /** Igual forma que `products.tags`. */
   tags: z.array(z.string().trim().min(1)).max(10).default([]),
-  /** Igual forma que `products.images`: subconjunto ordenado de `selectedImages`, primera = portada. */
-  images: z.array(z.string().url()),
+  /** HTML simple (párrafos), igual forma que `products.description`. */
+  descriptionHtml: draftTextSchema,
   /** Mismo schema que ya valida el editor real de bloques — compatibilidad garantizada por construcción. */
-  product_sections: productSectionsSchema,
+  productSections: productSectionsSchema,
+  /** Igual forma que `products.images`: subconjunto ordenado de las imágenes seleccionadas por el admin, primera = portada. Nunca una URL fuera de esa selección. */
+  galleryImageUrls: z.array(z.string().url()),
+  /** Hechos literales detectados, cada uno con su fuente de evidencia (texto o imagen). */
+  detectedFacts: z.array(detectedFactSchema).default([]),
+  /** Afirmaciones que NO deben hacerse por falta de evidencia (o que se detectaron y removieron del borrador). */
+  claimsToAvoid: z.array(z.string()).default([]),
+  /** Nombres de campo que quedan "por confirmar" por falta de información. */
+  fieldsNeedingConfirmation: z.array(z.string()).default([]),
+  /** Líneas del texto de origen descartadas a propósito (contacto, stock, ofertas, despacho, URLs, administrativo, garantías ajenas). */
+  ignoredSupplierLines: z.array(z.string()).default([]),
   /** Metadatos propios del estudio — nunca se guardan en `products`, solo informan la UI/el informe. */
   meta: z.object({
-    mode: z.literal("demo"),
-    /** ISO 8601. Se pasa como parámetro al generador para que siga siendo puro/determinista. */
+    mode: z.enum(AI_PRODUCT_STUDIO_MODES),
+    /** ISO 8601. */
     generatedAt: z.string(),
-    /** Explican qué se omitió y por qué (ej. "Sin menciones de materiales: se dejó vacío"). */
+    /** Modelo de OpenAI usado (solo cuando mode === "ai"). */
+    model: z.string().optional(),
     warnings: z.array(z.string()).default([]),
-    /** Nombres de campos marcados "por confirmar" por falta de información en el texto de origen. */
-    pendingFields: z.array(z.string()).default([]),
-    /**
-     * Hechos literales extraídos del texto del proveedor (líneas ya
-     * filtradas de contacto/stock/ofertas/administrativo) — lo que la vista
-     * previa muestra como "datos detectados del proveedor", separado de los
-     * campos "por confirmar". Mismo concepto que usará la IA real
-     * (`detected_facts` en AI_PRODUCT_STUDIO_PLAN.md).
-     */
-    detectedFacts: z.array(z.string()).default([]),
-    /**
-     * Categorías de afirmación que NO se deben hacer porque el texto de
-     * origen no las menciona (materiales, medidas, certificaciones,
-     * garantías...) — mismo concepto que `claims_to_avoid` en el contrato
-     * futuro de IA real.
-     */
-    claimsToAvoid: z.array(z.string()).default([]),
-    /**
-     * Líneas del texto del proveedor que se ignoraron a propósito (contacto/
-     * WhatsApp, llamadas para confirmar stock, ofertas, despacho de
-     * terceros, URLs externas, instrucciones administrativas, garantías
-     * ajenas a la tienda) — para que el admin pueda verificar que no se
-     * perdió nada importante, nunca se usan para generar la ficha.
-     */
-    ignoredSupplierLines: z.array(z.string()).default([]),
   }),
 });
 export type AIProductDraft = z.infer<typeof aiProductDraftSchema>;

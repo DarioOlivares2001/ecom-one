@@ -149,12 +149,12 @@ export default function NuevoProductoPage() {
       slug: draft.slug || f.slug,
       category: draft.category || f.category,
     }));
-    if (draft.description) setDescription(draft.description);
-    if (draft.images.length > 0) {
-      setProductMedia((prev) => Array.from(new Set([...prev, ...draft.images])));
-      setImages(draft.images);
+    if (draft.descriptionHtml) setDescription(draft.descriptionHtml);
+    if (draft.galleryImageUrls.length > 0) {
+      setProductMedia((prev) => Array.from(new Set([...prev, ...draft.galleryImageUrls])));
+      setImages(draft.galleryImageUrls);
     }
-    setAiSections(draft.product_sections);
+    setAiSections(draft.productSections);
     setSectionsResetKey((k) => k + 1);
   }
 

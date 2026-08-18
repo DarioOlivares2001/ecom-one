@@ -104,7 +104,7 @@ console.log('\n[2b] Regresión: "Características destacadas" nunca se usa como 
   );
   assert(draft.name === "Nombre por confirmar", `nombre = "Nombre por confirmar" (obtuvo: "${draft.name}")`);
   assert(draft.slug === "", "slug vacío cuando el nombre es el placeholder");
-  assert(draft.meta.pendingFields.includes("name"), "name queda en pendingFields");
+  assert(draft.fieldsNeedingConfirmation.includes("name"), "name queda en fieldsNeedingConfirmation");
 
   const draftWithRealName = generateDemoDraft(
     {
@@ -129,7 +129,7 @@ console.log("\n[3] No inventa materiales/medidas/certificaciones/garantías/stoc
     tone: "directo",
   };
   const draft = generateDemoDraft(input, FIXED_TIMESTAMP);
-  const fullText = `${draft.name} ${draft.description} ${draft.meta_desc}`.toLowerCase();
+  const fullText = `${draft.name} ${draft.descriptionHtml}`.toLowerCase();
 
   const forbiddenIfAbsentFromSource = ["algodón", "algodon", "acero", "iso 9001", "garantía de por vida", "certificado", "cura", "trata", "alivia"];
   for (const term of forbiddenIfAbsentFromSource) {
@@ -137,12 +137,12 @@ console.log("\n[3] No inventa materiales/medidas/certificaciones/garantías/stoc
   }
   assert(draft.category === "", "category nunca se infiere en modo demo (queda vacía)");
   assert(draft.tags.length === 0, "tags nunca se infieren en modo demo (queda vacío)");
-  assert(draft.meta.pendingFields.includes("category"), 'category se marca "por confirmar" en pendingFields');
+  assert(draft.fieldsNeedingConfirmation.includes("category"), 'category se marca "por confirmar" en fieldsNeedingConfirmation');
   assert(
     !("stock" in draft) && !("price" in draft),
     "el contrato de salida no incluye price/stock: el estudio no puede tocarlos"
   );
-  assert(draft.meta.claimsToAvoid.some((c) => c.startsWith("materiales:")), "claimsToAvoid marca materiales como no mencionados");
+  assert(draft.claimsToAvoid.some((c) => c.startsWith("materiales:")), "claimsToAvoid marca materiales como no mencionados");
 }
 
 console.log("\n[3b] Nunca genera testimonios, FAQ ni comparador antes/después");
@@ -154,7 +154,7 @@ console.log("\n[3b] Nunca genera testimonios, FAQ ni comparador antes/después")
     tone: "confiable",
   };
   const draft = generateDemoDraft(input, FIXED_TIMESTAMP);
-  const types = draft.product_sections.map((s) => s.type);
+  const types = draft.productSections.map((s) => s.type);
   assert(!types.includes("testimonials"), "nunca genera sección de testimonios");
   assert(!types.includes("faq"), "nunca genera sección de FAQ (aunque el texto tenga preguntas)");
   assert(!types.includes("before_after"), "nunca genera comparador antes/después");
@@ -184,7 +184,7 @@ console.log("\n[3c] Ignora contacto/stock/ofertas/despacho/URLs/administrativo/g
     tone: "directo",
   };
   const draft = generateDemoDraft(input, FIXED_TIMESTAMP);
-  const fullText = `${draft.description} ${JSON.stringify(draft.product_sections)}`.toLowerCase();
+  const fullText = `${draft.descriptionHtml} ${JSON.stringify(draft.productSections)}`.toLowerCase();
 
   assert(!fullText.includes("whatsapp") && !fullText.includes("912345678"), "no incluye WhatsApp/teléfono del proveedor");
   assert(!fullText.includes("confirmar stock"), "no incluye la instrucción de llamar para confirmar stock");
@@ -194,9 +194,9 @@ console.log("\n[3c] Ignora contacto/stock/ofertas/despacho/URLs/administrativo/g
   assert(!fullText.includes("sku proveedor"), "no incluye la instrucción administrativa interna");
   assert(!fullText.includes("garantía del fabricante") && !fullText.includes("6 meses"), "no incluye la garantía ajena a la tienda");
 
-  assert(draft.meta.ignoredSupplierLines.length >= 7, `se registraron ${draft.meta.ignoredSupplierLines.length} líneas ignoradas (>=7 esperado)`);
+  assert(draft.ignoredSupplierLines.length >= 7, `se registraron ${draft.ignoredSupplierLines.length} líneas ignoradas (>=7 esperado)`);
   assert(
-    draft.meta.ignoredSupplierLines.some((l) => l.startsWith("Contacto/WhatsApp")),
+    draft.ignoredSupplierLines.some((l) => l.startsWith("Contacto/WhatsApp")),
     "ignoredSupplierLines identifica la categoría Contacto/WhatsApp"
   );
 
@@ -211,7 +211,7 @@ console.log("\n[4] Secciones generadas dependen de imágenes/viñetas disponible
     FIXED_TIMESTAMP
   );
   assert(
-    !noBullets.product_sections.some((s) => s.type === "benefits"),
+    !noBullets.productSections.some((s) => s.type === "benefits"),
     "sin viñetas en el texto -> no genera sección de Beneficios"
   );
 
@@ -220,7 +220,7 @@ console.log("\n[4] Secciones generadas dependen de imágenes/viñetas disponible
     FIXED_TIMESTAMP
   );
   assert(
-    !oneImage.product_sections.some((s) => s.type === "versatility" || s.type === "media_strip"),
+    !oneImage.productSections.some((s) => s.type === "versatility" || s.type === "media_strip"),
     "con 1 sola imagen -> no genera Versatilidad ni Imagen ancha (necesitan 2da/3ra imagen)"
   );
 
@@ -229,14 +229,14 @@ console.log("\n[4] Secciones generadas dependen de imágenes/viñetas disponible
     FIXED_TIMESTAMP
   );
   assert(
-    threeImages.product_sections.some((s) => s.type === "benefits") &&
-      threeImages.product_sections.some((s) => s.type === "versatility") &&
-      threeImages.product_sections.some((s) => s.type === "media_strip"),
+    threeImages.productSections.some((s) => s.type === "benefits") &&
+      threeImages.productSections.some((s) => s.type === "versatility") &&
+      threeImages.productSections.some((s) => s.type === "media_strip"),
     "con viñetas + 3 imágenes -> genera Beneficios + Versatilidad + Imagen ancha"
   );
   assert(
-    threeImages.images.length === 3 && threeImages.images.every((u, i) => u === [IMG(1), IMG(2), IMG(3)][i]),
-    "images de salida = exactamente las selectedImages, en el mismo orden (nunca inventa URLs nuevas)"
+    threeImages.galleryImageUrls.length === 3 && threeImages.galleryImageUrls.every((u, i) => u === [IMG(1), IMG(2), IMG(3)][i]),
+    "galleryImageUrls de salida = exactamente las selectedImages, en el mismo orden (nunca inventa URLs nuevas)"
   );
 }
 
