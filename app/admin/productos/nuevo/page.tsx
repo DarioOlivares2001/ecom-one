@@ -31,6 +31,7 @@ import { findSectionsUsingImage } from "@/lib/product/sections/imageUsage";
 import type { ProductSectionList } from "@/lib/product/sections/types";
 import type { AIProductDraft } from "@/lib/ai-product-studio/schema";
 import { readAndClearAIStudioBridge } from "@/lib/ai-product-studio/bridge";
+import { commercialDataToFormPatch } from "@/lib/ai-product-studio/commercialData";
 
 // ─── Rich text editor (client-only) ──────────────────────────────────────────
 
@@ -163,6 +164,10 @@ export default function NuevoProductoPage() {
     if (!bridged) return;
     setProductMedia(bridged.productMedia);
     handleApplyAIDraft(bridged.draft);
+    if (bridged.commercial) {
+      const patch = commercialDataToFormPatch(bridged.commercial);
+      setForm((f) => ({ ...f, ...patch }));
+    }
     setAppliedFromAIStudio(true);
     toast.success("Borrador del Estudio IA aplicado. Revisa todos los campos antes de guardar.");
     // eslint-disable-next-line react-hooks/exhaustive-deps

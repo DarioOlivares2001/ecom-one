@@ -30,6 +30,11 @@ import {
   type AIProductStudioTone,
 } from "@/lib/ai-product-studio/schema";
 import { writeAIStudioBridge } from "@/lib/ai-product-studio/bridge";
+import {
+  validateCommercialData,
+  type CommercialField,
+  type CommercialFormInput,
+} from "@/lib/ai-product-studio/commercialData";
 import { SECTION_REGISTRY } from "@/lib/product/sections/types";
 
 type Step = 1 | 2 | 3;
@@ -116,6 +121,28 @@ export function AIProductWizard() {
   const [editedTags, setEditedTags] = useState("");
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
+
+  // Datos comerciales: precio, stock, costo y enlace Dropi. Nunca los genera
+  // ni los toca la IA — el admin los completa acá antes de aplicar, para que
+  // el formulario manual abra con la ficha lista de punta a punta.
+  const [commercialForm, setCommercialForm] = useState<CommercialFormInput>({
+    price: "",
+    compareAtPrice: "",
+    stock: "0",
+    costPrice: "",
+    dropiProductUrl: "",
+  });
+  const commercialValidation = validateCommercialData(commercialForm);
+
+  function commercialError(field: CommercialField): string | undefined {
+    return commercialValidation.ok
+      ? undefined
+      : commercialValidation.errors.find((e) => e.field === field)?.message;
+  }
+
+  function updateCommercialField(field: keyof CommercialFormInput, value: string) {
+    setCommercialForm((prev) => ({ ...prev, [field]: value }));
+  }
 
   const includedSections = draft ? draft.productSections.filter((s) => !excludedSectionIds.has(s.id)) : [];
 
@@ -237,7 +264,7 @@ export function AIProductWizard() {
   // ── Aplicar al borrador: puente a sessionStorage + navegar al form manual ─
 
   function handleApply() {
-    if (!draft) return;
+    if (!draft || !commercialValidation.ok) return;
     const finalDraft: AIProductDraft = {
       ...draft,
       category: editedCategory.trim(),
@@ -248,7 +275,7 @@ export function AIProductWizard() {
       productSections: includedSections,
     };
 
-    writeAIStudioBridge({ draft: finalDraft, productMedia });
+    writeAIStudioBridge({ draft: finalDraft, productMedia, commercial: commercialValidation.data });
     appliedRef.current = true; // ninguna imagen subida en este asistente se borra: se llevan al formulario manual
     router.push("/admin/productos/nuevo");
   }
@@ -614,6 +641,115 @@ export function AIProductWizard() {
                 </div>
               )}
             </div>
+
+            <section className="rounded-xl border border-zinc-200 bg-white shadow-sm">
+              <div className="border-b border-zinc-100 px-5 py-3.5">
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                  Datos comerciales
+                </h2>
+              </div>
+              <div className="flex flex-col gap-4 p-5">
+                <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-500">
+                  Precio, stock, costo y enlace Dropi son datos de negocio — la IA nunca los genera ni los
+                  modifica. Complétalos para que el formulario abra listo, o déjalos pendientes y termínalos
+                  ahí directamente.
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-sm font-medium text-zinc-700">Precio de venta CLP *</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      placeholder="49990"
+                      className={clsx(inputCls, commercialError("price") && "border-red-400 bg-red-50")}
+                      value={commercialForm.price}
+                      onChange={(e) => updateCommercialField("price", e.target.value)}
+                    />
+                    {commercialError("price") && (
+                      <p className="text-xs text-red-600">{commercialError("price")}</p>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-sm font-medium text-zinc-700">Precio comparativo (opcional)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      placeholder="79990"
+                      className={clsx(
+                        inputCls,
+                        commercialError("compareAtPrice") && "border-red-400 bg-red-50"
+                      )}
+                      value={commercialForm.compareAtPrice}
+                      onChange={(e) => updateCommercialField("compareAtPrice", e.target.value)}
+                    />
+                    {commercialError("compareAtPrice") && (
+                      <p className="text-xs text-red-600">{commercialError("compareAtPrice")}</p>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-sm font-medium text-zinc-700">Stock *</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      placeholder="0"
+                      className={clsx(inputCls, commercialError("stock") && "border-red-400 bg-red-50")}
+                      value={commercialForm.stock}
+                      onChange={(e) => updateCommercialField("stock", e.target.value)}
+                    />
+                    {commercialError("stock") && (
+                      <p className="text-xs text-red-600">{commercialError("stock")}</p>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-sm font-medium text-zinc-700">
+                      Precio costo (opcional, interno)
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      placeholder="25000"
+                      className={clsx(inputCls, commercialError("costPrice") && "border-red-400 bg-red-50")}
+                      value={commercialForm.costPrice}
+                      onChange={(e) => updateCommercialField("costPrice", e.target.value)}
+                    />
+                    {commercialError("costPrice") && (
+                      <p className="text-xs text-red-600">{commercialError("costPrice")}</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-zinc-700">
+                    URL del producto en Dropi (opcional)
+                  </label>
+                  <input
+                    type="url"
+                    placeholder="https://app.dropi.cl/..."
+                    className={clsx(
+                      inputCls,
+                      commercialError("dropiProductUrl") && "border-red-400 bg-red-50"
+                    )}
+                    value={commercialForm.dropiProductUrl}
+                    onChange={(e) => updateCommercialField("dropiProductUrl", e.target.value)}
+                  />
+                  {commercialError("dropiProductUrl") ? (
+                    <p className="text-xs text-red-600">{commercialError("dropiProductUrl")}</p>
+                  ) : (
+                    <p className="text-xs text-zinc-400">
+                      Solo lo ve el admin, nunca aparece en la tienda pública.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </section>
           </div>
         )}
       </div>
@@ -646,10 +782,17 @@ export function AIProductWizard() {
             </Button>
           )}
           {step === 3 && (
-            <Button type="button" onClick={handleApply}>
-              Aplicar al borrador
-              <ArrowRight className="h-4 w-4" />
-            </Button>
+            <div className="flex items-center gap-2">
+              {!commercialValidation.ok && (
+                <p className="max-w-[220px] text-right text-xs text-red-600">
+                  {commercialValidation.errors[0]?.message}
+                </p>
+              )}
+              <Button type="button" onClick={handleApply} disabled={!commercialValidation.ok}>
+                Aplicar al borrador
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </div>
           )}
         </div>
       </div>

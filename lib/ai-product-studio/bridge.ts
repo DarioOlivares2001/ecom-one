@@ -1,4 +1,5 @@
 import { aiProductDraftSchema, type AIProductDraft } from "./schema";
+import { commercialDataSchema, type CommercialData } from "./commercialData";
 
 /**
  * Puente entre el asistente de pantalla completa (`/admin/productos/crear-con-ia`)
@@ -16,6 +17,8 @@ export interface AIStudioBridgePayload {
   draft: AIProductDraft;
   /** Biblioteca completa subida durante el asistente (`product_media`), no solo la galería elegida. */
   productMedia: string[];
+  /** Precio, stock, costo y enlace Dropi — completados a mano por el admin, nunca generados por la IA. */
+  commercial?: CommercialData;
 }
 
 export function writeAIStudioBridge(payload: AIStudioBridgePayload): void {
@@ -32,7 +35,7 @@ export function readAndClearAIStudioBridge(): AIStudioBridgePayload | null {
     if (!raw) return null;
     sessionStorage.removeItem(BRIDGE_KEY);
 
-    const parsed = JSON.parse(raw) as { draft?: unknown; productMedia?: unknown };
+    const parsed = JSON.parse(raw) as { draft?: unknown; productMedia?: unknown; commercial?: unknown };
     const draftResult = aiProductDraftSchema.safeParse(parsed.draft);
     if (!draftResult.success) return null;
 
@@ -40,7 +43,13 @@ export function readAndClearAIStudioBridge(): AIStudioBridgePayload | null {
       ? parsed.productMedia.filter((u): u is string => typeof u === "string")
       : [];
 
-    return { draft: draftResult.data, productMedia };
+    let commercial: CommercialData | undefined;
+    if (parsed.commercial !== undefined) {
+      const commercialResult = commercialDataSchema.safeParse(parsed.commercial);
+      if (commercialResult.success) commercial = commercialResult.data;
+    }
+
+    return { draft: draftResult.data, productMedia, commercial };
   } catch {
     return null;
   }
