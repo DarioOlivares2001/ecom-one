@@ -38,7 +38,7 @@ Estado: **Fase 2 implementada** — `/admin/productos/crear-con-ia` genera borra
   descriptionHtml: string;      // HTML simple (párrafos)
   productSections: ProductSection[]; // mismo `productSectionsSchema` que ya persiste `products.product_sections`
   galleryImageUrls: string[];   // subconjunto/orden de `selectedImages` — nunca una URL ajena
-  detectedFacts: { claim: string; source: "supplier_text" | "image_visual" }[];
+  detectedFacts: { claim: string; source: "supplier_text" | "supplier_image"; imageUrl?: string; value?: string; confidence?: "confirmed" | "needs_review" }[];
   claimsToAvoid: string[];
   fieldsNeedingConfirmation: string[];
   ignoredSupplierLines: string[];

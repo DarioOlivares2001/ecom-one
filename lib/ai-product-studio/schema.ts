@@ -52,12 +52,21 @@ export type AIProductStudioInput = z.infer<typeof aiProductStudioInputSchema>;
 export const AI_PRODUCT_STUDIO_MODES = ["demo", "ai"] as const;
 export type AIProductStudioMode = (typeof AI_PRODUCT_STUDIO_MODES)[number];
 
-export const DETECTED_FACT_SOURCES = ["supplier_text", "image_visual"] as const;
+export const DETECTED_FACT_SOURCES = ["supplier_text", "supplier_image"] as const;
 export type DetectedFactSource = (typeof DETECTED_FACT_SOURCES)[number];
+
+export const DETECTED_FACT_CONFIDENCES = ["confirmed", "needs_review"] as const;
+export type DetectedFactConfidence = (typeof DETECTED_FACT_CONFIDENCES)[number];
 
 export const detectedFactSchema = z.object({
   claim: z.string().trim().min(1),
   source: z.enum(DETECTED_FACT_SOURCES),
+  /** URL real de la imagen de origen (ya resuelta en servidor, nunca un ID simbólico) — solo presente cuando source === "supplier_image". */
+  imageUrl: z.string().url().optional(),
+  /** Valor literal detectado (ej. medidas "17 cm, 10,5 cm, 5 cm") — presente cuando el hecho trae una cifra concreta, como las medidas leídas de una imagen. */
+  value: z.string().optional(),
+  /** Solo para hechos con evidencia visual: "confirmed" si la lectura es clara e inequívoca, "needs_review" si no se pudo confirmar con certeza — nunca genera un bloque automático de la ficha. */
+  confidence: z.enum(DETECTED_FACT_CONFIDENCES).optional(),
 });
 export type DetectedFact = z.infer<typeof detectedFactSchema>;
 

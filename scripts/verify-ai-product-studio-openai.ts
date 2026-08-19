@@ -160,6 +160,7 @@ async function main() {
       ],
       claimsToAvoid: [],
       fieldsNeedingConfirmation: [],
+      imageMeasurements: [],
     });
 
     const result = await withEnv(
@@ -253,6 +254,7 @@ async function main() {
       detectedFacts: [],
       claimsToAvoid: [],
       fieldsNeedingConfirmation: [],
+      imageMeasurements: [],
     });
     const result = await withEnv({ AI_PRODUCT_STUDIO_ENABLED: "true", OPENAI_API_KEY: "sk-test-fake" }, () =>
       generateAIDraft(input, { client, generatedAt: "2026-01-01T00:00:00.000Z" })
@@ -289,6 +291,7 @@ async function main() {
       detectedFacts: [],
       claimsToAvoid: [],
       fieldsNeedingConfirmation: [],
+      imageMeasurements: [],
     });
     const resultSinMedidas = await withEnv({ AI_PRODUCT_STUDIO_ENABLED: "true", OPENAI_API_KEY: "sk-test-fake" }, () =>
       generateAIDraft(inputSinMedidas, { client: client2, generatedAt: "2026-01-01T00:00:00.000Z" })
@@ -320,6 +323,7 @@ async function main() {
       detectedFacts: [],
       claimsToAvoid: [],
       fieldsNeedingConfirmation: [],
+      imageMeasurements: [],
     });
     const result = await withEnv({ AI_PRODUCT_STUDIO_ENABLED: "true", OPENAI_API_KEY: "sk-test-fake" }, () =>
       generateAIDraft(input, { client, generatedAt: "2026-01-01T00:00:00.000Z" })
@@ -362,6 +366,7 @@ async function main() {
       detectedFacts: [{ claim: "Diseño apilable", source: "supplier_text" }],
       claimsToAvoid: [],
       fieldsNeedingConfirmation: [],
+      imageMeasurements: [],
     });
     const result = await withEnv({ AI_PRODUCT_STUDIO_ENABLED: "true", OPENAI_API_KEY: "sk-test-fake" }, () =>
       generateAIDraft(input, { client, generatedAt: "2026-01-01T00:00:00.000Z" })
@@ -411,6 +416,7 @@ async function main() {
       detectedFacts: [],
       claimsToAvoid: [],
       fieldsNeedingConfirmation: [],
+      imageMeasurements: [],
     });
     const result = await withEnv({ AI_PRODUCT_STUDIO_ENABLED: "true", OPENAI_API_KEY: "sk-test-fake" }, () =>
       generateAIDraft(input, { client, generatedAt: "2026-01-01T00:00:00.000Z" })
@@ -442,6 +448,7 @@ async function main() {
       detectedFacts: [],
       claimsToAvoid: [],
       fieldsNeedingConfirmation: [],
+      imageMeasurements: [],
     });
     const result2 = await withEnv({ AI_PRODUCT_STUDIO_ENABLED: "true", OPENAI_API_KEY: "sk-test-fake" }, () =>
       generateAIDraft(input, { client: client2, generatedAt: "2026-01-01T00:00:00.000Z" })
@@ -474,6 +481,7 @@ async function main() {
       detectedFacts: [],
       claimsToAvoid: [],
       fieldsNeedingConfirmation: [],
+      imageMeasurements: [],
     });
     const result3 = await withEnv({ AI_PRODUCT_STUDIO_ENABLED: "true", OPENAI_API_KEY: "sk-test-fake" }, () =>
       generateAIDraft(input, { client: client3, generatedAt: "2026-01-01T00:00:00.000Z" })
@@ -509,6 +517,7 @@ async function main() {
       detectedFacts: [],
       claimsToAvoid: [],
       fieldsNeedingConfirmation: [],
+      imageMeasurements: [],
     });
     const result = await withEnv({ AI_PRODUCT_STUDIO_ENABLED: "true", OPENAI_API_KEY: "sk-test-fake" }, () =>
       generateAIDraft(input, { client, generatedAt: "2026-01-01T00:00:00.000Z" })
@@ -545,6 +554,7 @@ async function main() {
       detectedFacts: [],
       claimsToAvoid: [],
       fieldsNeedingConfirmation: [],
+      imageMeasurements: [],
     });
     const result = await withEnv({ AI_PRODUCT_STUDIO_ENABLED: "true", OPENAI_API_KEY: "sk-test-fake" }, () =>
       generateAIDraft(input, { client, generatedAt: "2026-01-01T00:00:00.000Z" })
@@ -576,6 +586,7 @@ async function main() {
       detectedFacts: [],
       claimsToAvoid: [],
       fieldsNeedingConfirmation: [],
+      imageMeasurements: [],
     });
     const result = await withEnv({ AI_PRODUCT_STUDIO_ENABLED: "true", OPENAI_API_KEY: "sk-test-fake" }, () =>
       generateAIDraft(input, { client, generatedAt: "2026-01-01T00:00:00.000Z" })
@@ -620,6 +631,7 @@ async function main() {
       detectedFacts: [],
       claimsToAvoid: [],
       fieldsNeedingConfirmation: [],
+      imageMeasurements: [],
     });
     const result = await withEnv({ AI_PRODUCT_STUDIO_ENABLED: "true", OPENAI_API_KEY: "sk-test-fake", AI_PRODUCT_STUDIO_MODEL: "gpt-custom-test" }, () =>
       generateAIDraft(input, { client, generatedAt: "2026-01-01T00:00:00.000Z" })

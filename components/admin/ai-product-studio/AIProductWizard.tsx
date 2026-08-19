@@ -64,6 +64,15 @@ function sectionLabel(type: string): string {
   return SECTION_REGISTRY.find((s) => s.type === type)?.label ?? type;
 }
 
+/** Mueve la URL en `index` al frente (nueva portada) — nunca quita ninguna imagen, solo reordena. */
+function moveGalleryImageToFront(urls: string[], index: number): string[] {
+  if (index <= 0 || index >= urls.length) return urls;
+  const next = [...urls];
+  const [picked] = next.splice(index, 1);
+  next.unshift(picked);
+  return next;
+}
+
 const PENDING_FIELD_LABELS: Record<string, string> = {
   name: "Nombre",
   slug: "Slug",
@@ -475,15 +484,31 @@ export function AIProductWizard() {
                   <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
                   Datos detectados del proveedor
                 </h3>
-                <ul className="space-y-1 text-xs text-emerald-800">
+                <ul className="space-y-1.5 text-xs text-emerald-800">
                   {draft.detectedFacts.map((fact, i) => (
                     <li key={i} className="flex items-start gap-1.5">
-                      {fact.source === "image_visual" ? (
+                      {fact.source === "supplier_image" ? (
                         <Eye className="mt-0.5 h-3 w-3 shrink-0" aria-label="Observación visual" />
                       ) : (
                         <FileText className="mt-0.5 h-3 w-3 shrink-0" aria-label="Texto del proveedor" />
                       )}
-                      <span>{fact.claim}</span>
+                      <span className="flex flex-wrap items-center gap-1.5">
+                        <span>{fact.claim}</span>
+                        {fact.confidence === "needs_review" && (
+                          <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                            Por confirmar
+                          </span>
+                        )}
+                        {fact.imageUrl && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={fact.imageUrl}
+                            alt="Imagen fuente"
+                            title="Imagen fuente"
+                            className="h-5 w-5 shrink-0 rounded border border-emerald-200 object-cover"
+                          />
+                        )}
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -583,17 +608,31 @@ export function AIProductWizard() {
               </label>
               <div className="flex flex-wrap gap-2">
                 {draft.galleryImageUrls.map((url, i) => (
-                  <div key={url} className="relative h-14 w-14 overflow-hidden rounded-md border border-zinc-200">
+                  <div key={url} className="group relative h-14 w-14 overflow-hidden rounded-md border border-zinc-200">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={url} alt="" className="h-full w-full object-cover" />
-                    {i === 0 && (
+                    {i === 0 ? (
                       <span className="absolute bottom-0 left-0 right-0 bg-zinc-900/70 py-0.5 text-center text-[8px] font-semibold uppercase text-white">
                         Portada
                       </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => updateDraftField("galleryImageUrls", moveGalleryImageToFront(draft.galleryImageUrls, i))}
+                        className="absolute inset-x-0 bottom-0 bg-zinc-900/70 py-0.5 text-center text-[8px] font-semibold uppercase text-white opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
+                      >
+                        Usar como portada
+                      </button>
                     )}
                   </div>
                 ))}
               </div>
+              {draft.meta.warnings.some((w) => w.toLowerCase().includes("portada")) && (
+                <p className="text-xs text-amber-600">
+                  Se ajustó la portada automáticamente para evitar una imagen técnica de medidas. Pasa el mouse
+                  sobre cualquier miniatura y elige &quot;Usar como portada&quot; para cambiarla.
+                </p>
+              )}
             </div>
 
             <div className="flex flex-col gap-2">
