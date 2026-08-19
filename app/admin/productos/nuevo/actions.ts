@@ -22,6 +22,7 @@ import {
 import { parseProductSectionsFromFormData } from "@/lib/product/sections/parseFromFormData";
 import { parseImagesFromFormData } from "@/lib/product/parseImagesFromFormData";
 import { validateDropiProductUrl } from "@/lib/products/dropiLink";
+import { revalidateProductCatalog } from "@/lib/product/revalidateCatalog";
 
 export async function createProductAction(
   formData: FormData
@@ -223,11 +224,7 @@ export async function createProductAction(
   }
 
   revalidatePath("/admin/productos");
-  const createdSlug =
-    typeof productData?.slug === "string" ? productData.slug.trim() : "";
-  if (createdSlug) {
-    revalidatePath(`/productos/${createdSlug}`);
-  }
+  revalidateProductCatalog(productData?.slug);
   return { success: true };
 }
 
@@ -444,10 +441,7 @@ export async function updateProductAction(
 
   revalidatePath("/admin/productos");
   revalidatePath(`/admin/productos/${id}`);
-  const updatedSlug = (formData.get("slug") as string | null)?.trim();
-  if (updatedSlug) {
-    revalidatePath(`/productos/${updatedSlug}`);
-  }
+  revalidateProductCatalog(formData.get("slug") as string | null);
   return { success: true };
 }
 
@@ -461,6 +455,7 @@ export async function archiveProductAction(id: string): Promise<{ error?: string
     return { error: error instanceof Error ? error.message : "No se pudo archivar el producto." };
   }
   revalidatePath("/admin/productos");
+  revalidateProductCatalog();
   return {};
 }
 
@@ -483,5 +478,6 @@ export async function restoreProductAction(id: string): Promise<{ error?: string
     return { error: error instanceof Error ? error.message : "No se pudo restaurar el producto." };
   }
   revalidatePath("/admin/productos");
+  revalidateProductCatalog();
   return {};
 }
