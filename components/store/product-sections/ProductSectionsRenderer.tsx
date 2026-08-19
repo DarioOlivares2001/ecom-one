@@ -53,15 +53,30 @@ export function ProductSectionsRenderer({ sections }: ProductSectionsRendererPro
             return <VisualSequenceSection key={section.id} data={section.data} />;
           case "usage":
             return (
-              <SingleImageSection key={section.id} data={section.data} fallbackEyebrow="Cómo usarlo" />
+              <SingleImageSection
+                key={section.id}
+                type="usage"
+                data={section.data}
+                fallbackEyebrow="Cómo usarlo"
+              />
             );
           case "measurements":
             return (
-              <SingleImageSection key={section.id} data={section.data} fallbackEyebrow="Medidas" />
+              <SingleImageSection
+                key={section.id}
+                type="measurements"
+                data={section.data}
+                fallbackEyebrow="Medidas"
+              />
             );
           case "versatility":
             return (
-              <SingleImageSection key={section.id} data={section.data} fallbackEyebrow="Versatilidad" />
+              <SingleImageSection
+                key={section.id}
+                type="versatility"
+                data={section.data}
+                fallbackEyebrow="Versatilidad"
+              />
             );
           default: {
             // Garantía de exhaustividad para futuras secciones nuevas.

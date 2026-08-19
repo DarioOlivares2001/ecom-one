@@ -1,5 +1,4 @@
 import type { Json, Product } from "@/lib/db/types";
-import { normalizeOptimizedImageUrl } from "@/lib/images/normalizeOptimizedImageUrl";
 import { isAllowedImageSrc } from "@/lib/images/isAllowedImageSrc";
 
 export type ProductUpsellSuggestion = {
@@ -16,10 +15,9 @@ export type ProductUpsellSuggestion = {
   discount_steps: Json;
 };
 
-/** URL optimizada solo si además es de un host permitido (nunca una imagen rota, ej. *.supabase.co). */
+/** Solo se usa si es de un host permitido (nunca una imagen rota, ej. *.supabase.co). */
 function safeUpsellImage(url: string): string {
-  const normalized = normalizeOptimizedImageUrl(url);
-  return isAllowedImageSrc(normalized) ? normalized : "";
+  return isAllowedImageSrc(url) ? url : "";
 }
 
 /**

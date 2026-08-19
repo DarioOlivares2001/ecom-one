@@ -1,4 +1,5 @@
 import type { ProductSection } from "@/lib/product/sections/types";
+import { DIMENSIONS_PATTERN_SOURCE, extractExplicitDimensions } from "@/lib/product/sections/extractDimensions";
 
 /**
  * Red de seguridad server-side contra especificaciones técnicas que el
@@ -18,9 +19,6 @@ export interface GuardedClaim {
   pattern: RegExp;
 }
 
-/** Fuente única de verdad del patrón de dimensiones — reusado también por `extractExplicitDimensions`. */
-const DIMENSIONS_PATTERN_SOURCE = String.raw`\b\d+\s*[x×]\s*\d+\s*[x×]\s*\d+\s*cm\b`;
-
 export const GUARDED_CLAIMS: GuardedClaim[] = [
   { id: "power", label: "potencia", pattern: /\b\d+\s*w(atts?)?\b/gi },
   { id: "dimensions", label: "medidas", pattern: new RegExp(DIMENSIONS_PATTERN_SOURCE, "gi") },
@@ -37,11 +35,7 @@ export const GUARDED_CLAIMS: GuardedClaim[] = [
   { id: "delivery_promise", label: "promesa de despacho", pattern: /\bentrega\s+(r[aá]pida|garantizada|en\s+\d+\s*(horas?|d[ií]as?))\b|\bdespacho\s+(gratis|express|garantizado)(\s+garantizado)?\b/gi },
 ];
 
-/** Devuelve el primer texto de dimensiones explícitas (ej. "29 x 22 x 10 cm") encontrado, o null si no hay ninguno. */
-export function extractExplicitDimensions(text: string): string | null {
-  const match = text.match(new RegExp(DIMENSIONS_PATTERN_SOURCE, "i"));
-  return match ? match[0] : null;
-}
+export { extractExplicitDimensions };
 
 function hasMatch(text: string, pattern: RegExp): boolean {
   pattern.lastIndex = 0;

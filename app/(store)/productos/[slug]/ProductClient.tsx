@@ -264,6 +264,32 @@ function ReviewCard({ review, featured = false }: { review: Review; featured?: b
   );
 }
 
+// ─── Upsell thumbnail ────────────────────────────────────────────────────────
+
+function UpsellThumb({ src, alt }: { src: string; alt: string }) {
+  const [broken, setBroken] = useState(false);
+  const showImage = !!src && !broken;
+
+  return (
+    <div className="relative h-24 w-full overflow-hidden rounded-[var(--radius-sm)] bg-zinc-100">
+      {showImage ? (
+        <Image
+          src={src}
+          alt={alt}
+          fill
+          sizes="180px"
+          className="object-cover"
+          onError={() => setBroken(true)}
+        />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center text-zinc-300">
+          <ShoppingBag className="h-6 w-6" strokeWidth={1.5} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main component ──────────────────────────────────────────────────────────
 
 function variantLabel(optionValues: unknown): string {
@@ -518,27 +544,10 @@ export function ProductClient({ product, reviews, variants, upsellSuggestions = 
       <div className="grid grid-cols-1 lg:grid-cols-2 lg:gap-16 lg:px-8">
 
         {/* Gallery — full bleed on mobile, half column on desktop */}
-        <Gallery images={sanitizeImageUrls(product.images)} name={product.name} />
+        <Gallery key={product.id} images={sanitizeImageUrls(product.images)} name={product.name} />
 
         {/* Info panel — padded on mobile, flush on desktop */}
         <div className="mt-6 flex flex-col gap-5 px-4 sm:px-6 lg:mt-0 lg:px-0">
-          <style jsx global>{`
-            @keyframes upsell-pulse-soft {
-              0% {
-                transform: scale(1);
-                box-shadow: 0 3px 10px rgba(0, 0, 0, 0.15);
-              }
-              50% {
-                transform: scale(1.05);
-                box-shadow: 0 7px 16px rgba(250, 204, 21, 0.35);
-              }
-              100% {
-                transform: scale(1);
-                box-shadow: 0 3px 10px rgba(0, 0, 0, 0.15);
-              }
-            }
-          `}</style>
-
           {/* Badges */}
           <div className="flex flex-wrap items-center gap-2">
             {normalizeProductCategory(product.category) && (
@@ -721,73 +730,6 @@ export function ProductClient({ product, reviews, variants, upsellSuggestions = 
 
           {/* Trust badges */}
           <TrustBadges />
-
-          {visibleUpsells.length > 0 && (
-            <section className="rounded-[var(--radius-lg)] border border-[var(--color-primary)]/25 bg-zinc-50 px-3.5 py-3">
-              <p className="text-sm font-semibold text-zinc-900">
-                También te puede interesar
-              </p>
-
-              <div className="mt-3 flex snap-x snap-mandatory gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {visibleUpsells.map((s) => (
-                  <div
-                    key={s.id}
-                    className="w-[44%] min-w-[44%] snap-start rounded-[var(--radius-md)] border border-zinc-200 bg-white p-2.5 shadow-sm sm:w-[200px] sm:min-w-[200px] lg:w-[220px] lg:min-w-[220px]"
-                  >
-                    <div className="flex flex-col gap-2">
-                      <div className="relative h-20 w-full overflow-hidden rounded-[var(--radius-sm)] bg-zinc-100">
-                        {s.image ? (
-                          <Image
-                            src={s.image}
-                            alt={s.name}
-                            fill
-                            sizes="220px"
-                            className="object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center text-zinc-400">
-                            <ShoppingBag className="h-4 w-4" />
-                          </div>
-                        )}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="line-clamp-2 text-xs font-semibold leading-snug text-zinc-900">
-                          {s.name}
-                        </p>
-                        <div className="mt-0.5 flex items-center gap-1.5">
-                          {s.price > s.offerPrice && (
-                            <span className="text-[10px] text-zinc-500 line-through">
-                              {formatPrice(s.price)}
-                            </span>
-                          )}
-                          <span className="text-xs font-extrabold text-zinc-900">
-                            {formatPrice(s.offerPrice)}
-                          </span>
-                          {s.discountPercent > 0 && (
-                            <span className="rounded-full bg-rose-600 px-1.5 py-0.5 text-[10px] font-extrabold text-white">
-                              -{s.discountPercent}%
-                            </span>
-                          )}
-                        </div>
-                        {s.savings > 0 && (
-                          <p className="mt-0.5 inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-extrabold text-emerald-700">
-                            Ahorras {formatPrice(s.savings)}
-                          </p>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleAddSuggestion(s)}
-                        className="inline-flex h-8 w-fit items-center justify-center rounded-full bg-yellow-400 px-3.5 text-[11px] font-bold text-black transition-all duration-200 hover:scale-[1.05] hover:bg-yellow-300 animate-[upsell-pulse-soft_2.2s_infinite_ease-in-out] hover:[animation-play-state:paused]"
-                      >
-                        {addedSuggestionId === s.id ? "Agregado" : "Agregar"}
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
         </div>
       </div>
 
@@ -820,10 +762,20 @@ export function ProductClient({ product, reviews, variants, upsellSuggestions = 
       ) : null}
 
       {/* ── Reviews ── */}
-      <section className="mt-20 px-4 sm:px-6 lg:px-8">
-          <div className="mb-8 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+      <section className={clsx("px-4 sm:px-6 lg:px-8", reviews.length > 0 ? "mt-20" : "mt-14")}>
+          <div
+            className={clsx(
+              "flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between",
+              reviews.length > 0 ? "mb-8" : "mb-3"
+            )}
+          >
             <div>
-              <h2 className="font-display text-2xl font-bold text-[var(--color-text)] sm:text-3xl">
+              <h2
+                className={clsx(
+                  "font-display font-bold text-[var(--color-text)]",
+                  reviews.length > 0 ? "text-2xl sm:text-3xl" : "text-xl"
+                )}
+              >
                 Reseñas
               </h2>
               {avgRating !== null && (
@@ -870,11 +822,60 @@ export function ProductClient({ product, reviews, variants, upsellSuggestions = 
               </div>
             </div>
           ) : (
-            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-6 text-sm text-[var(--color-text-muted)]">
+            <p className="text-sm text-[var(--color-text-muted)]">
               Aún no hay reseñas aprobadas para este producto.
-            </div>
+            </p>
           )}
         </section>
+
+      {/* ── También te puede interesar ── */}
+      {visibleUpsells.length > 0 && (
+        <section className="mt-14 px-4 sm:px-6 lg:px-8">
+          <h2 className="font-display text-xl font-bold text-[var(--color-text)] sm:text-2xl">
+            También te puede interesar
+          </h2>
+
+          <div className="mt-4 flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {visibleUpsells.map((s) => (
+              <div
+                key={s.id}
+                className="w-[152px] min-w-[152px] shrink-0 snap-start rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-2.5 shadow-sm sm:w-[200px] sm:min-w-[200px] lg:w-[220px] lg:min-w-[220px]"
+              >
+                <div className="flex h-full flex-col gap-2">
+                  <UpsellThumb src={s.image} alt={s.name} />
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <p className="line-clamp-2 min-h-[2.25rem] text-xs font-semibold leading-snug text-[var(--color-text)]">
+                      {s.name}
+                    </p>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      {s.price > s.offerPrice && (
+                        <span className="text-[10px] text-[var(--color-text-muted)] line-through">
+                          {formatPrice(s.price)}
+                        </span>
+                      )}
+                      <span className="text-sm font-extrabold text-[var(--color-text)]">
+                        {formatPrice(s.offerPrice)}
+                      </span>
+                    </div>
+                    {s.savings > 0 && (
+                      <p className="mt-0.5 inline-flex w-fit rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-extrabold text-emerald-700">
+                        Ahorras {formatPrice(s.savings)}
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleAddSuggestion(s)}
+                    className="mt-1 inline-flex h-8 w-full items-center justify-center rounded-full border border-transparent [background:var(--brand-gradient)] px-3 text-xs font-bold text-white transition-transform duration-150 active:scale-[0.97]"
+                  >
+                    {addedSuggestionId === s.id ? "Agregado" : "Agregar"}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       <AnimatePresence>
         {reviewModalOpen && (

@@ -69,7 +69,13 @@ export function StickyAddToCart({
   const displayUnit = getDiscountedUnitPrice(volumeInput, 1, listUnit);
   const effectiveStock = stock ?? product.stock;
   const rawImage = image ?? product.images?.[0] ?? "";
-  const effectiveImage = isAllowedImageSrc(rawImage) ? rawImage : "";
+  const allowedImage = isAllowedImageSrc(rawImage) ? rawImage : "";
+  const [imageBroken, setImageBroken] = useState(false);
+  const effectiveImage = imageBroken ? "" : allowedImage;
+
+  useEffect(() => {
+    setImageBroken(false);
+  }, [allowedImage]);
 
   // Referencia ("antes") = el mayor entre compare_at_price del lado seleccionado
   // y el listUnit; sirve sólo para el tachado visual.
@@ -181,6 +187,7 @@ export function StickyAddToCart({
                     fill
                     sizes="48px"
                     className="object-cover"
+                    onError={() => setImageBroken(true)}
                   />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center text-zinc-300">
