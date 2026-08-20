@@ -1,4 +1,4 @@
-import { LayoutGrid, Package, TrendingUp } from "lucide-react";
+import { LayoutGrid, Megaphone, Package, Palette, Sparkles, TrendingUp } from "lucide-react";
 import { AdminLoginForm } from "./AdminLoginForm";
 
 interface AdminLoginScreenProps {
@@ -12,6 +12,34 @@ const BENEFITS = [
   { icon: Package, label: "Pedidos" },
   { icon: LayoutGrid, label: "Catálogo" },
   { icon: TrendingUp, label: "Control de ventas" },
+] as const;
+
+/**
+ * Sección aspiracional, solo desktop (ver `lg:block` más abajo): capacidades
+ * que amplían lo operativo de arriba. "Fichas con IA en minutos" ya existe
+ * (Estudio IA de Producto) — su texto deja explícito que el resultado es un
+ * borrador EDITABLE, nunca algo que se publica solo. Las otras dos todavía
+ * no están implementadas por completo, de ahí `comingSoon`.
+ */
+const VISION_ITEMS = [
+  {
+    icon: Sparkles,
+    title: "Fichas con IA en minutos",
+    description: "Convierte información e imágenes de proveedor en una ficha editable.",
+    comingSoon: false,
+  },
+  {
+    icon: Palette,
+    title: "Creativos para campañas",
+    description: "Prepara piezas visuales coherentes para probar nuevos productos.",
+    comingSoon: true,
+  },
+  {
+    icon: Megaphone,
+    title: "Marketing automatizado",
+    description: "Conecta campañas, productos y resultados en un solo flujo.",
+    comingSoon: true,
+  },
 ] as const;
 
 /**
@@ -105,6 +133,33 @@ export function AdminLoginScreen({ storeName, logoUrl }: AdminLoginScreenProps) 
               </li>
             ))}
           </ul>
+
+          {/* Visión "hacia dónde va la tienda" — solo desktop, para no recargar mobile */}
+          <div className="mt-10 hidden border-t border-white/10 pt-6 lg:block">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">
+              Tu tienda, lista para crecer
+            </p>
+            <ul className="mt-4 flex flex-col gap-4">
+              {VISION_ITEMS.map(({ icon: Icon, title, description, comingSoon }) => (
+                <li key={title} className="flex items-start gap-3">
+                  <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/10">
+                    <Icon className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+                  </span>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-semibold text-white/90">{title}</p>
+                      {comingSoon && (
+                        <span className="rounded-full border border-white/15 bg-white/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white/50">
+                          Próximamente
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-0.5 text-xs leading-relaxed text-white/55">{description}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       </div>
 
