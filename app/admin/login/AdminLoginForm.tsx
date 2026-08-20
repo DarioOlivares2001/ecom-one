@@ -2,16 +2,21 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
+import { CuentaPasswordToggleSuffix } from "@/components/cuenta/CuentaPasswordToggleSuffix";
 
 export function AdminLoginForm() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (loading) return;
     setError("");
     setLoading(true);
     try {
@@ -35,45 +40,44 @@ export function AdminLoginForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="w-full max-w-sm rounded-xl border border-zinc-200 bg-white p-6 shadow-sm">
-      <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">Acceso administrador</h1>
-      <p className="mt-1 text-sm text-zinc-600">Ingresa tus credenciales para entrar al panel.</p>
+    <form onSubmit={onSubmit}>
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--color-text-muted)]">
+        Inicia sesión
+      </p>
 
-      <div className="mt-5 space-y-4">
-        <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-zinc-800">Email</span>
-          <input
-            type="email"
-            autoComplete="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="h-10 w-full rounded-md border border-zinc-300 px-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-300"
-            required
-          />
-        </label>
-        <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-zinc-800">Contraseña</span>
-          <input
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="h-10 w-full rounded-md border border-zinc-300 px-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-300"
-            required
-          />
-        </label>
+      <div className="mt-4 flex flex-col gap-4">
+        <Input
+          label="Email"
+          type="email"
+          autoComplete="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          disabled={loading}
+          required
+        />
+        <Input
+          label="Contraseña"
+          type={showPassword ? "text" : "password"}
+          autoComplete="current-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          disabled={loading}
+          required
+          suffix={
+            <CuentaPasswordToggleSuffix visible={showPassword} onToggle={() => setShowPassword((prev) => !prev)} />
+          }
+        />
       </div>
 
-      {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
+      {error ? (
+        <p className="mt-4 text-sm font-medium text-[var(--color-error)]" role="alert">
+          {error}
+        </p>
+      ) : null}
 
-      <button
-        type="submit"
-        disabled={loading}
-        className="mt-5 inline-flex h-11 w-full items-center justify-center rounded-md bg-zinc-950 px-4 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        {loading ? "Entrando..." : "Entrar al panel"}
-      </button>
+      <Button type="submit" size="lg" fullWidth loading={loading} className="mt-6">
+        {loading ? "Ingresando…" : "Ingresar al panel"}
+      </Button>
     </form>
   );
 }
-

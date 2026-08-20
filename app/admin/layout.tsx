@@ -30,7 +30,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     <div className={`min-h-screen bg-zinc-100 ${poppinsAdmin.className}`}>
       {!hideSidebar ? <AdminSidebar settings={settings} adminRole={session?.role ?? "admin"} /> : null}
       <div className={!hideSidebar ? "lg:pl-64" : undefined}>
-        <main className="min-h-screen p-6 pt-20 lg:pt-6">
+        <main className={isLoginRoute ? "min-h-screen" : "min-h-screen p-6 pt-20 lg:pt-6"}>
           {children}
         </main>
       </div>
