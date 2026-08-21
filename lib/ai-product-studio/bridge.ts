@@ -4,11 +4,18 @@ import { commercialDataSchema, type CommercialData } from "./commercialData";
 /**
  * Puente entre el asistente de pantalla completa (`/admin/productos/crear-con-ia`)
  * y el formulario manual (`/admin/productos/nuevo`), vía `sessionStorage` — no
- * hay backend/estado compartido entre rutas de Next.js, así que "Aplicar al
- * borrador" escribe acá antes de navegar, y `nuevo/page.tsx` lo lee (y borra)
- * al montar. Si el borrador guardado no valida contra el schema actual (ej.
- * quedó de una versión anterior), se descarta silenciosamente y el formulario
- * manual arranca en blanco como siempre — nunca se aplica un borrador a medias.
+ * hay backend/estado compartido entre rutas de Next.js, así que "Continuar a
+ * revisión" escribe acá antes de navegar, y `nuevo/page.tsx` lo lee (y borra)
+ * al montar. Ningún producto se crea en este paso — el puente solo transporta
+ * datos entre dos pantallas; la fila real de `products` recién se crea si el
+ * admin llega hasta el final del formulario manual y confirma "Guardar".
+ *
+ * `readAndClearAIStudioBridge` distingue explícitamente "no venía nada del
+ * asistente" (`absent`, el caso normal al entrar directo a /nuevo) de "venía
+ * algo pero no se pudo leer/validar" (`invalid`, ej. quedó de una versión
+ * anterior o sessionStorage se corrompió) — antes ambos casos devolvían
+ * `null` indistinguibles, y el formulario manual quedaba en blanco sin
+ * avisar que la transferencia había fallado.
  */
 
 const BRIDGE_KEY = "ai_product_studio_pending_draft";
@@ -23,20 +30,33 @@ export interface AIStudioBridgePayload {
   aiGeneratedImageUrls?: string[];
 }
 
-export function writeAIStudioBridge(payload: AIStudioBridgePayload): void {
+export type AIStudioBridgeReadResult =
+  | { status: "absent" }
+  | { status: "invalid" }
+  | { status: "ok"; payload: AIStudioBridgePayload };
+
+/** true si se pudo escribir en sessionStorage — el caller debe avisar y NO navegar si esto devuelve false. */
+export function writeAIStudioBridge(payload: AIStudioBridgePayload): boolean {
   try {
     sessionStorage.setItem(BRIDGE_KEY, JSON.stringify(payload));
+    return true;
   } catch (error) {
     console.warn("[ai-product-studio] no se pudo escribir el puente a sessionStorage:", error);
+    return false;
   }
 }
 
-export function readAndClearAIStudioBridge(): AIStudioBridgePayload | null {
+export function readAndClearAIStudioBridge(): AIStudioBridgeReadResult {
+  let raw: string | null;
   try {
-    const raw = sessionStorage.getItem(BRIDGE_KEY);
-    if (!raw) return null;
-    sessionStorage.removeItem(BRIDGE_KEY);
+    raw = sessionStorage.getItem(BRIDGE_KEY);
+  } catch {
+    return { status: "absent" };
+  }
+  if (!raw) return { status: "absent" };
+  sessionStorage.removeItem(BRIDGE_KEY);
 
+  try {
     const parsed = JSON.parse(raw) as {
       draft?: unknown;
       productMedia?: unknown;
@@ -44,7 +64,7 @@ export function readAndClearAIStudioBridge(): AIStudioBridgePayload | null {
       aiGeneratedImageUrls?: unknown;
     };
     const draftResult = aiProductDraftSchema.safeParse(parsed.draft);
-    if (!draftResult.success) return null;
+    if (!draftResult.success) return { status: "invalid" };
 
     const productMedia = Array.isArray(parsed.productMedia)
       ? parsed.productMedia.filter((u): u is string => typeof u === "string")
@@ -60,8 +80,8 @@ export function readAndClearAIStudioBridge(): AIStudioBridgePayload | null {
       ? parsed.aiGeneratedImageUrls.filter((u): u is string => typeof u === "string")
       : [];
 
-    return { draft: draftResult.data, productMedia, commercial, aiGeneratedImageUrls };
+    return { status: "ok", payload: { draft: draftResult.data, productMedia, commercial, aiGeneratedImageUrls } };
   } catch {
-    return null;
+    return { status: "invalid" };
   }
 }

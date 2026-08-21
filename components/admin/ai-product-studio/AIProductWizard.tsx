@@ -321,9 +321,16 @@ export function AIProductWizard() {
     }
   }
 
-  // ── Aplicar al borrador: puente a sessionStorage + navegar al form manual ─
+  // ── Continuar a revisión: puente a sessionStorage + navegar al form manual ─
+  // Esto NUNCA crea un producto — solo transporta el borrador ya generado
+  // (nombre, slug, descripción, galería, biblioteca, secciones y datos
+  // comerciales) hasta el formulario manual, donde el admin revisa todo y
+  // recién ahí decide guardar. Si la escritura del puente falla (ej.
+  // sessionStorage deshabilitado/lleno), no se navega — el admin se queda en
+  // el asistente con un error claro en vez de llegar a un formulario vacío
+  // sin saber por qué.
 
-  function handleApply() {
+  function handleContinueToReview() {
     if (!draft || !commercialValidation.ok) return;
     const finalDraft: AIProductDraft = {
       ...draft,
@@ -335,12 +342,16 @@ export function AIProductWizard() {
       productSections: includedSections,
     };
 
-    writeAIStudioBridge({
+    const wrote = writeAIStudioBridge({
       draft: finalDraft,
       productMedia,
       commercial: commercialValidation.data,
       aiGeneratedImageUrls: Array.from(aiGeneratedImageUrls),
     });
+    if (!wrote) {
+      toast.error("No se pudo preparar el borrador para continuar. Intenta de nuevo.");
+      return;
+    }
     appliedRef.current = true; // ninguna imagen subida en este asistente se borra: se llevan al formulario manual
     router.push("/admin/productos/nuevo");
   }
@@ -891,8 +902,8 @@ export function AIProductWizard() {
                   {commercialValidation.errors[0]?.message}
                 </p>
               )}
-              <Button type="button" onClick={handleApply} disabled={!commercialValidation.ok}>
-                Aplicar al borrador
+              <Button type="button" onClick={handleContinueToReview} disabled={!commercialValidation.ok}>
+                Continuar a revisión
                 <ArrowRight className="h-4 w-4" />
               </Button>
             </div>

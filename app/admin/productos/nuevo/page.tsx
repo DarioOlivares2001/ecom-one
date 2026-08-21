@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Plus, Sparkles, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Plus, Sparkles, X } from "lucide-react";
 import { clsx } from "clsx";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -142,6 +142,10 @@ export default function NuevoProductoPage() {
   const [aiSections, setAiSections] = useState<ProductSectionList | null>(null);
   const [sectionsResetKey, setSectionsResetKey] = useState(0);
   const [appliedFromAIStudio, setAppliedFromAIStudio] = useState(false);
+  // true solo si veníamos del asistente IA (había algo en el puente) pero no
+  // se pudo leer/validar — nunca se confunde con "no venía nada" (el caso
+  // normal al entrar directo a este formulario).
+  const [aiBridgeError, setAiBridgeError] = useState(false);
   // Nivel 3 del Estudio IA (mejora visual): URLs ya aprobadas por el admin
   // como imágenes generadas por IA — solo para mostrar la insignia "Generada
   // con IA" en la biblioteca de este formulario. Nunca se muestra en la
@@ -165,8 +169,18 @@ export default function NuevoProductoPage() {
   }
 
   useEffect(() => {
-    const bridged = readAndClearAIStudioBridge();
-    if (!bridged) return;
+    const result = readAndClearAIStudioBridge();
+    if (result.status === "absent") return;
+    if (result.status === "invalid") {
+      // Venía algo del asistente pero no se pudo leer/validar (ej. sessionStorage
+      // corrupto o de una versión anterior) — nunca se navega en silencio ni se
+      // deja el formulario en blanco sin explicar por qué: se avisa explícitamente
+      // y el admin puede seguir completando el formulario a mano si prefiere.
+      setAiBridgeError(true);
+      toast.error("No se pudo cargar el borrador del Estudio IA. Vuelve a generarlo desde el asistente.");
+      return;
+    }
+    const bridged = result.payload;
     setProductMedia(bridged.productMedia);
     handleApplyAIDraft(bridged.draft);
     if (bridged.commercial) {
@@ -177,7 +191,7 @@ export default function NuevoProductoPage() {
       setAiGeneratedImageUrls(bridged.aiGeneratedImageUrls);
     }
     setAppliedFromAIStudio(true);
-    toast.success("Borrador del Estudio IA aplicado. Revisa todos los campos antes de guardar.");
+    toast.success("Borrador IA listo. Revisa todo antes de guardar.");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -408,10 +422,29 @@ export default function NuevoProductoPage() {
       {appliedFromAIStudio && (
         <div className="mb-6 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           <Sparkles className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-          <span>
-            Este borrador viene del <strong>Estudio IA (modo demo)</strong>. Revisa todos los campos —
-            especialmente los marcados &quot;por confirmar&quot; — antes de guardar.
-          </span>
+          <div>
+            <p className="font-semibold">Borrador IA listo</p>
+            <p className="mt-0.5">
+              Revisa imágenes, secciones y datos comerciales antes de guardar. Nada de esto es un producto
+              todavía — se crea recién al presionar &quot;Guardar&quot; más abajo.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {aiBridgeError && (
+        <div className="mb-6 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <div>
+            <p className="font-semibold">No se pudo cargar el borrador del Estudio IA</p>
+            <p className="mt-0.5">
+              Vuelve a{" "}
+              <Link href="/admin/productos/crear-con-ia" className="underline underline-offset-2">
+                el asistente
+              </Link>{" "}
+              e inténtalo de nuevo. Puedes seguir completando este formulario a mano mientras tanto.
+            </p>
+          </div>
         </div>
       )}
 
@@ -736,7 +769,7 @@ export default function NuevoProductoPage() {
                 loading={loading}
                 disabled={!canSave}
               >
-                Guardar producto
+                {active ? "Guardar como producto activo" : "Guardar como producto inactivo"}
               </Button>
               <Link href="/admin/productos" className="w-full">
                 <Button type="button" variant="secondary" size="lg" fullWidth>
