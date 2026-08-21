@@ -4,9 +4,9 @@ import { getAdminSessionFromCookies } from "@/lib/admin/session";
 import { extractR2KeyFromPublicUrl } from "@/lib/storage/r2";
 import { aiProductDraftSchema } from "@/lib/ai-product-studio/schema";
 import {
-  generateVisualAudit,
-  type GenerateVisualAuditErrorCode,
-} from "@/lib/ai-product-studio/visualEnhancement/generateVisualAudit";
+  generateVisualDirectionPlan,
+  type GenerateVisualDirectionPlanErrorCode,
+} from "@/lib/ai-product-studio/visualEnhancement/generateVisualDirectionPlan";
 
 export const runtime = "nodejs";
 
@@ -15,10 +15,10 @@ const PRODUCT_IMAGE_PREFIX = "products/";
 const bodySchema = z.object({
   draft: aiProductDraftSchema,
   /** Fotos reales del proveedor ya subidas a la biblioteca — nunca imágenes IA de una ronda anterior. */
-  referencePhotos: z.array(z.string().url()).max(6),
+  referencePhotos: z.array(z.string().url()).max(20),
 });
 
-const ERROR_STATUS: Record<GenerateVisualAuditErrorCode, number> = {
+const ERROR_STATUS: Record<GenerateVisualDirectionPlanErrorCode, number> = {
   disabled: 503,
   not_configured: 503,
   timeout: 504,
@@ -27,11 +27,10 @@ const ERROR_STATUS: Record<GenerateVisualAuditErrorCode, number> = {
 };
 
 /**
- * Nivel 3 del Estudio IA de Producto — "Mejora visual y persuasiva de la
- * ficha", paso 1: auditoría. Analiza el borrador YA generado y las fotos
- * reales del proveedor y propone qué hacer con cada sección — nunca genera
- * ni sube ninguna imagen todavía. Protegida con la misma sesión de admin que
- * el resto de `/admin`.
+ * "Dirección visual de ficha": clasifica las fotos reales, decide portada y
+ * orden de galería, y arma el plan de imagen por sección — nunca genera ni
+ * sube ninguna imagen todavía (ver `generate-image`/`approve-image`).
+ * Protegida con la misma sesión de admin que el resto de `/admin`.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -61,15 +60,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const result = await generateVisualAudit(parsed.data.draft, parsed.data.referencePhotos);
+    const result = await generateVisualDirectionPlan(parsed.data.draft, parsed.data.referencePhotos);
     if (!result.ok) {
-      console.error("[ai-product-studio][visual-audit] error:", { code: result.code, adminId: session.id });
+      console.error("[ai-product-studio][visual-direction-plan] error:", { code: result.code, adminId: session.id });
       return NextResponse.json({ error: result.error, code: result.code }, { status: ERROR_STATUS[result.code] });
     }
 
-    return NextResponse.json({ audit: result.audit });
+    return NextResponse.json({ plan: result.plan });
   } catch (err) {
-    console.error("[ai-product-studio][visual-audit] excepción:", err);
-    return NextResponse.json({ error: "Error interno al analizar la ficha." }, { status: 500 });
+    console.error("[ai-product-studio][visual-direction-plan] excepción:", err);
+    return NextResponse.json({ error: "Error interno al planificar la ficha." }, { status: 500 });
   }
 }

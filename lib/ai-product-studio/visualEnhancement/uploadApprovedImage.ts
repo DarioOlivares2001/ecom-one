@@ -30,7 +30,6 @@ export interface UploadApprovedAIImageInput {
   /** Imagen ya generada por OpenAI (`generateProductImage`), en base64 crudo (sin el prefijo "data:..."). */
   base64: string;
   mimeType: string;
-  suggestionId: string;
   sectionId: string;
   sectionType: string;
   prompt: string;
@@ -84,7 +83,6 @@ export async function uploadApprovedAIImage(input: UploadApprovedAIImageInput): 
 
   return {
     url,
-    suggestionId: input.suggestionId,
     sectionId: input.sectionId,
     sectionType: input.sectionType,
     prompt: input.prompt,

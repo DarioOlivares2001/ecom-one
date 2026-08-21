@@ -36,7 +36,7 @@ import {
   type CommercialFormInput,
 } from "@/lib/ai-product-studio/commercialData";
 import { SECTION_REGISTRY, type ProductSection } from "@/lib/product/sections/types";
-import { VisualEnhancementPanel } from "./VisualEnhancementPanel";
+import { VisualDirectionPanel } from "./VisualDirectionPanel";
 
 type Step = 1 | 2 | 3;
 
@@ -192,6 +192,35 @@ export function AIProductWizard() {
   function handleAddAIImageToLibrary(url: string) {
     markAsAIGenerated(url);
     trackedSetProductMedia((prev) => (prev.includes(url) ? prev : [...prev, url]));
+  }
+
+  /**
+   * Asigna una foto REAL del proveedor a una sección (o portada si
+   * `sectionId === "gallery"`) — a diferencia de `handleApplyAIImageToSection`,
+   * NUNCA marca la imagen como "Generada con IA". La usa el Plan visual tanto
+   * para aplicar sus recomendaciones automáticas como para la elección manual
+   * del admin ("Cambiar imagen").
+   */
+  function handleApplyRealImageToSection(sectionId: string, url: string) {
+    if (sectionId === "gallery") {
+      setDraft((prev) =>
+        prev ? { ...prev, galleryImageUrls: [url, ...prev.galleryImageUrls.filter((u) => u !== url)] } : prev
+      );
+      return;
+    }
+    setDraft((prev) =>
+      prev
+        ? {
+            ...prev,
+            productSections: prev.productSections.map((s) => (s.id === sectionId ? withSectionImageUrl(s, url) : s)),
+          }
+        : prev
+    );
+  }
+
+  /** Reemplaza `draft.galleryImageUrls` completo (portada = primer elemento) — Plan visual, solo fotos reales. */
+  function handleReorderGallery(urls: string[]) {
+    setDraft((prev) => (prev ? { ...prev, galleryImageUrls: urls } : prev));
   }
 
   function commercialError(field: CommercialField): string | undefined {
@@ -749,11 +778,13 @@ export function AIProductWizard() {
               )}
             </div>
 
-            <VisualEnhancementPanel
+            <VisualDirectionPanel
               draft={draft}
               referencePhotos={images}
-              onApplyToSection={handleApplyAIImageToSection}
-              onAddToLibrary={handleAddAIImageToLibrary}
+              onReorderGallery={handleReorderGallery}
+              onApplyRealImageToSection={handleApplyRealImageToSection}
+              onApplyAIImageToSection={handleApplyAIImageToSection}
+              onAddAIImageToLibrary={handleAddAIImageToLibrary}
             />
 
             <section className="rounded-xl border border-zinc-200 bg-white shadow-sm">

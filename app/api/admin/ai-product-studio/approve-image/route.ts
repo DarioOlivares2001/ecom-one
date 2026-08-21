@@ -11,7 +11,6 @@ const DATA_URL_PATTERN = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=
 
 const bodySchema = z.object({
   dataUrl: z.string().min(1),
-  suggestionId: z.string().min(1),
   sectionId: z.string().min(1),
   sectionType: z.string().min(1),
   prompt: z.string().min(1).max(1000),
@@ -58,7 +57,6 @@ export async function POST(request: NextRequest) {
     const approved = await uploadApprovedAIImage({
       base64,
       mimeType,
-      suggestionId: parsed.data.suggestionId,
       sectionId: parsed.data.sectionId,
       sectionType: parsed.data.sectionType,
       prompt: parsed.data.prompt,
