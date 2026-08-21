@@ -142,6 +142,11 @@ export default function NuevoProductoPage() {
   const [aiSections, setAiSections] = useState<ProductSectionList | null>(null);
   const [sectionsResetKey, setSectionsResetKey] = useState(0);
   const [appliedFromAIStudio, setAppliedFromAIStudio] = useState(false);
+  // Nivel 3 del Estudio IA (mejora visual): URLs ya aprobadas por el admin
+  // como imágenes generadas por IA — solo para mostrar la insignia "Generada
+  // con IA" en la biblioteca de este formulario. Nunca se muestra en la
+  // tienda pública.
+  const [aiGeneratedImageUrls, setAiGeneratedImageUrls] = useState<string[]>([]);
 
   function handleApplyAIDraft(draft: AIProductDraft) {
     setForm((f) => ({
@@ -167,6 +172,9 @@ export default function NuevoProductoPage() {
     if (bridged.commercial) {
       const patch = commercialDataToFormPatch(bridged.commercial);
       setForm((f) => ({ ...f, ...patch }));
+    }
+    if (bridged.aiGeneratedImageUrls?.length) {
+      setAiGeneratedImageUrls(bridged.aiGeneratedImageUrls);
     }
     setAppliedFromAIStudio(true);
     toast.success("Borrador del Estudio IA aplicado. Revisa todos los campos antes de guardar.");
@@ -463,6 +471,7 @@ export default function NuevoProductoPage() {
                 findUsage={findMediaUsage}
                 onDelete={handleDeleteMedia}
                 onUploadingChange={setImagesUploading}
+                badgeFor={(url) => (aiGeneratedImageUrls.includes(url) ? "Generada con IA" : null)}
               />
             </Card>
 

@@ -35,7 +35,8 @@ import {
   type CommercialField,
   type CommercialFormInput,
 } from "@/lib/ai-product-studio/commercialData";
-import { SECTION_REGISTRY } from "@/lib/product/sections/types";
+import { SECTION_REGISTRY, type ProductSection } from "@/lib/product/sections/types";
+import { VisualEnhancementPanel } from "./VisualEnhancementPanel";
 
 type Step = 1 | 2 | 3;
 
@@ -71,6 +72,20 @@ function moveGalleryImageToFront(urls: string[], index: number): string[] {
   const [picked] = next.splice(index, 1);
   next.unshift(picked);
   return next;
+}
+
+/**
+ * Reemplaza `image_url` de una sección sin cambiar nada más de su `data`.
+ * Los 4 tipos que puede producir el Estudio IA (benefits/usage/measurements/
+ * versatility) siempre tienen `image_url` — el cast es seguro porque solo se
+ * sobreescribe ese campo compartido, nunca se toca la forma del resto de
+ * `data` (TypeScript no puede probar la correlación tipo/data a través de un
+ * spread genérico sobre una unión discriminada, pero el chequeo `in` en
+ * tiempo de ejecución sí la garantiza).
+ */
+function withSectionImageUrl(section: ProductSection, url: string): ProductSection {
+  if (!("image_url" in section.data)) return section;
+  return { ...section, data: { ...section.data, image_url: url } } as ProductSection;
 }
 
 const PENDING_FIELD_LABELS: Record<string, string> = {
@@ -142,6 +157,42 @@ export function AIProductWizard() {
     dropiProductUrl: "",
   });
   const commercialValidation = validateCommercialData(commercialForm);
+
+  // Nivel 3 — Mejora visual: URLs de imágenes generadas por IA y ya
+  // aprobadas por el admin en esta sesión (aplicadas a una sección/portada o
+  // agregadas a la biblioteca). Solo se usa para mostrar la insignia "Generada
+  // con IA" — nunca cambia qué imagen se usa dónde, eso ya lo decidió el admin
+  // al aprobarla.
+  const [aiGeneratedImageUrls, setAiGeneratedImageUrls] = useState<Set<string>>(new Set());
+
+  function markAsAIGenerated(url: string) {
+    setAiGeneratedImageUrls((prev) => (prev.has(url) ? prev : new Set(prev).add(url)));
+  }
+
+  /** "Usar en esta sección" / "Usar como portada" — `sectionId === "gallery"` mueve la imagen al frente de la galería; cualquier otro id es una sección real del borrador. */
+  function handleApplyAIImageToSection(sectionId: string, url: string) {
+    markAsAIGenerated(url);
+    if (sectionId === "gallery") {
+      setDraft((prev) =>
+        prev ? { ...prev, galleryImageUrls: [url, ...prev.galleryImageUrls.filter((u) => u !== url)] } : prev
+      );
+      return;
+    }
+    setDraft((prev) =>
+      prev
+        ? {
+            ...prev,
+            productSections: prev.productSections.map((s) => (s.id === sectionId ? withSectionImageUrl(s, url) : s)),
+          }
+        : prev
+    );
+  }
+
+  /** "Agregar a biblioteca" — solo entra a `product_media`, nunca a la galería pública ni a ninguna sección automáticamente. */
+  function handleAddAIImageToLibrary(url: string) {
+    markAsAIGenerated(url);
+    trackedSetProductMedia((prev) => (prev.includes(url) ? prev : [...prev, url]));
+  }
 
   function commercialError(field: CommercialField): string | undefined {
     return commercialValidation.ok
@@ -284,7 +335,12 @@ export function AIProductWizard() {
       productSections: includedSections,
     };
 
-    writeAIStudioBridge({ draft: finalDraft, productMedia, commercial: commercialValidation.data });
+    writeAIStudioBridge({
+      draft: finalDraft,
+      productMedia,
+      commercial: commercialValidation.data,
+      aiGeneratedImageUrls: Array.from(aiGeneratedImageUrls),
+    });
     appliedRef.current = true; // ninguna imagen subida en este asistente se borra: se llevan al formulario manual
     router.push("/admin/productos/nuevo");
   }
@@ -434,6 +490,7 @@ export function AIProductWizard() {
                   findUsage={(url) => (images.includes(url) ? [{ id: "gallery", label: "Galería / candidatas para bloques" }] : [])}
                   onDelete={handleDeleteMedia}
                   onUploadingChange={setImagesUploading}
+                  badgeFor={(url) => (aiGeneratedImageUrls.has(url) ? "Generada con IA" : null)}
                 />
               </div>
             </section>
@@ -680,6 +737,13 @@ export function AIProductWizard() {
                 </div>
               )}
             </div>
+
+            <VisualEnhancementPanel
+              draft={draft}
+              referencePhotos={images}
+              onApplyToSection={handleApplyAIImageToSection}
+              onAddToLibrary={handleAddAIImageToLibrary}
+            />
 
             <section className="rounded-xl border border-zinc-200 bg-white shadow-sm">
               <div className="border-b border-zinc-100 px-5 py-3.5">

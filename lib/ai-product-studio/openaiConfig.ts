@@ -11,6 +11,9 @@ import "server-only";
 
 export const AI_PRODUCT_STUDIO_DEFAULT_MODEL = "gpt-5.6-terra";
 
+/** Modelo de imágenes de OpenAI usado por el Nivel 3 (mejora visual) — soporta `images.edit` con `input_fidelity: "high"`. */
+export const AI_PRODUCT_STUDIO_DEFAULT_IMAGE_MODEL = "gpt-image-1";
+
 export function isAIProductStudioEnabled(): boolean {
   return (process.env.AI_PRODUCT_STUDIO_ENABLED ?? "").trim().toLowerCase() === "true";
 }
@@ -21,4 +24,8 @@ export function getOpenAIApiKey(): string {
 
 export function getAIProductStudioModel(): string {
   return process.env.AI_PRODUCT_STUDIO_MODEL?.trim() || AI_PRODUCT_STUDIO_DEFAULT_MODEL;
+}
+
+export function getAIProductStudioImageModel(): string {
+  return process.env.AI_PRODUCT_STUDIO_IMAGE_MODEL?.trim() || AI_PRODUCT_STUDIO_DEFAULT_IMAGE_MODEL;
 }

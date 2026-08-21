@@ -36,6 +36,13 @@ interface ProductMediaLibraryProps {
   onDelete: (url: string) => void;
   /** Se avisa al padre mientras haya subidas en curso (para bloquear "Guardar"). */
   onUploadingChange?: (uploading: boolean) => void;
+  /**
+   * Etiqueta corta a mostrar como insignia sobre la miniatura (ej. "IA"), o
+   * null/undefined si no aplica. Puramente visual — nunca cambia `images` ni
+   * ningún otro dato. Usado por el Estudio IA de Producto para distinguir
+   * imágenes generadas por IA de las fotos reales subidas a mano.
+   */
+  badgeFor?: (url: string) => string | null | undefined;
 }
 
 type PendingUpload = { id: string; name: string };
@@ -46,6 +53,7 @@ export function ProductMediaLibrary({
   findUsage,
   onDelete,
   onUploadingChange,
+  badgeFor,
 }: ProductMediaLibraryProps) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [dropOver, setDropOver] = useState(false);
@@ -176,6 +184,12 @@ export function ProductMediaLibrary({
               <div className="absolute left-1 top-1 hidden group-hover:flex">
                 <GripVertical className="h-3.5 w-3.5 text-white drop-shadow" />
               </div>
+
+              {badgeFor?.(url) && (
+                <span className="absolute bottom-1 left-1 rounded-full bg-violet-600/90 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white shadow-sm">
+                  {badgeFor(url)}
+                </span>
+              )}
 
               <button
                 type="button"

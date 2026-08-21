@@ -63,6 +63,14 @@ export interface UploadToR2Options {
   contentType: string;
   /** Default: cacheable a largo plazo — todos los nombres de archivo son únicos (timestamp). */
   cacheControl?: string;
+  /**
+   * Metadata interna del objeto S3 (nunca se expone en la URL pública ni en
+   * la respuesta HTTP normal del archivo — solo visible vía `HeadObject`/API
+   * de R2). Usado por ejemplo por las imágenes generadas por IA del Estudio
+   * IA de Producto (`origin=ai_generated`, sección destino, prompt, fecha).
+   * Los valores deben ser ASCII (los headers S3 no soportan UTF-8 crudo).
+   */
+  metadata?: Record<string, string>;
 }
 
 /** Sube un objeto a R2 y devuelve su URL pública persistente. */
@@ -71,6 +79,7 @@ export async function uploadToR2({
   body,
   contentType,
   cacheControl = "public, max-age=31536000, immutable",
+  metadata,
 }: UploadToR2Options): Promise<string> {
   const config = getR2Config();
   const client = getR2Client(config);
@@ -82,6 +91,7 @@ export async function uploadToR2({
       Body: body,
       ContentType: contentType,
       CacheControl: cacheControl,
+      ...(metadata ? { Metadata: metadata } : {}),
     })
   );
 

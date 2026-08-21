@@ -19,6 +19,8 @@ export interface AIStudioBridgePayload {
   productMedia: string[];
   /** Precio, stock, costo y enlace Dropi — completados a mano por el admin, nunca generados por la IA. */
   commercial?: CommercialData;
+  /** URLs (dentro de `productMedia`/`draft`) que son imágenes generadas por IA ya aprobadas por el admin (Nivel 3) — solo para mostrar la insignia "Generada con IA" en el formulario manual. */
+  aiGeneratedImageUrls?: string[];
 }
 
 export function writeAIStudioBridge(payload: AIStudioBridgePayload): void {
@@ -35,7 +37,12 @@ export function readAndClearAIStudioBridge(): AIStudioBridgePayload | null {
     if (!raw) return null;
     sessionStorage.removeItem(BRIDGE_KEY);
 
-    const parsed = JSON.parse(raw) as { draft?: unknown; productMedia?: unknown; commercial?: unknown };
+    const parsed = JSON.parse(raw) as {
+      draft?: unknown;
+      productMedia?: unknown;
+      commercial?: unknown;
+      aiGeneratedImageUrls?: unknown;
+    };
     const draftResult = aiProductDraftSchema.safeParse(parsed.draft);
     if (!draftResult.success) return null;
 
@@ -49,7 +56,11 @@ export function readAndClearAIStudioBridge(): AIStudioBridgePayload | null {
       if (commercialResult.success) commercial = commercialResult.data;
     }
 
-    return { draft: draftResult.data, productMedia, commercial };
+    const aiGeneratedImageUrls = Array.isArray(parsed.aiGeneratedImageUrls)
+      ? parsed.aiGeneratedImageUrls.filter((u): u is string => typeof u === "string")
+      : [];
+
+    return { draft: draftResult.data, productMedia, commercial, aiGeneratedImageUrls };
   } catch {
     return null;
   }
