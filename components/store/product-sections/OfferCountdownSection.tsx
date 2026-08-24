@@ -13,7 +13,7 @@ interface OfferCountdownSectionProps {
 
 function Segment({ value, label }: { value: number; label: string }) {
   return (
-    <div className="flex min-w-[3.75rem] flex-1 flex-col items-center gap-1 rounded-[var(--radius-md)] bg-[var(--color-primary)] px-2 py-3 text-white sm:min-w-[4.5rem] sm:py-4">
+    <div className="flex min-w-[3.75rem] flex-1 flex-col items-center gap-1 rounded-[var(--radius-md)] bg-[var(--color-countdown-bg)] px-2 py-3 text-[var(--color-countdown-text)] sm:min-w-[4.5rem] sm:py-4">
       <span className="text-2xl font-extrabold tabular-nums leading-none sm:text-3xl">
         {String(value).padStart(2, "0")}
       </span>
@@ -59,11 +59,11 @@ export function OfferCountdownSection({ data }: OfferCountdownSectionProps) {
           whileInView={reduceMotion ? undefined : { opacity: 1, y: 0 }}
           viewport={{ once: true, margin: "-40px" }}
           transition={{ duration: 0.35, ease: "easeOut" }}
-          className="w-full rounded-[var(--radius-lg)] border border-[var(--color-primary)]/25 bg-[var(--color-primary)]/[0.06] px-4 py-6 sm:px-8 sm:py-8"
+          className="w-full rounded-[var(--radius-lg)] border border-[var(--color-countdown-bg)]/25 bg-[var(--color-countdown-bg)]/[0.08] px-4 py-6 sm:px-8 sm:py-8"
         >
           <div className="flex flex-col items-center gap-4 text-center sm:flex-row sm:items-center sm:justify-between sm:gap-8 sm:text-left">
             <div className="flex items-center gap-2.5">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary)]/15 text-[var(--color-primary)]">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--color-countdown-bg)]/20 text-[var(--color-countdown-bg)]">
                 <Clock className="h-5 w-5" />
               </span>
               <div>

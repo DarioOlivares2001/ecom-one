@@ -19,6 +19,8 @@ type ThemePalette = {
   badge: string;
   /** Hover del CTA primario. Si se omite, se calcula oscureciendo `primary`. */
   primaryHover?: string;
+  /** Fondo del contador de oferta — deliberadamente SEPARADO del color del CTA (`primary`). Si se omite, usa `badge`. */
+  countdownBg?: string;
 };
 
 /**
@@ -265,6 +267,14 @@ export function computeThemePaint(settings: StoreSettingsView) {
     ? darkenHex(primary, 0.14)
     : (presetTheme.primaryHover ?? darkenHex(presetTheme.primary, 0.14));
 
+  // Fondo del contador de oferta: variable propia, deliberadamente distinta
+  // de `primary`/`primaryHover` (el color del CTA) para que nunca "se
+  // confundan" visualmente. Sin columna manual dedicada (mismo patrón que
+  // `badge`) — en modo manual usa el acento; con preset, el valor curado del
+  // preset o, si no define uno propio, el mismo que `badge`.
+  const countdownBg = useManualColors ? accent : (presetTheme.countdownBg ?? presetTheme.badge);
+  const countdownText = isVeryLight(countdownBg) ? "#111111" : "#FFFFFF";
+
   return {
     primary,
     accent,
@@ -279,6 +289,8 @@ export function computeThemePaint(settings: StoreSettingsView) {
     footerText,
     badge,
     primaryHover,
+    countdownBg,
+    countdownText,
   };
 }
 
@@ -304,7 +316,18 @@ export function buildThemeCssProperties(settings: StoreSettingsView): CSSPropert
     });
   }
 
-  const { primary, accent, navbarBackground, navbarText, footerBackground, footerText, badge, primaryHover } = paint;
+  const {
+    primary,
+    accent,
+    navbarBackground,
+    navbarText,
+    footerBackground,
+    footerText,
+    badge,
+    primaryHover,
+    countdownBg,
+    countdownText,
+  } = paint;
   const background = safe.background_color;
   const surface = safe.surface_color;
   const text = safe.text_color;
@@ -335,6 +358,8 @@ export function buildThemeCssProperties(settings: StoreSettingsView): CSSPropert
     "--color-text-muted": textMuted,
     "--color-border": border,
     "--color-badge": badge,
+    "--color-countdown-bg": countdownBg,
+    "--color-countdown-text": countdownText,
     "--navbar-background": navbarBackground,
     "--navbar-text": navbarText,
     "--footer-background": footerBackground,

@@ -12,8 +12,14 @@
  * [6] countdown expirado/inválido no aparece
  * [7] orden de bloques se conserva
  * [8] estado de carrito y sticky CTA permanecen sincronizados
- * [9] selector visible: opción base "1 unidad" + tiers reales x2/x3;
- *     producto sin tiers reales no arma el selector (lista vacía)
+ * [9]  selector visible: opción base "1 unidad" + tiers reales x2/x3;
+ *      producto sin tiers reales no arma el selector (lista vacía)
+ * [10] plantilla inicial de packs sugeridos (1 u. sin dcto., x2: 5%, x3: 10%)
+ * [11] "Aplicar packs sugeridos" nunca sobrescribe escalones ya personalizados
+ * [12] precios del selector son idénticos a los que cobraría el checkout
+ *      usando exactamente la plantilla sugerida (5%/10%)
+ * [13] "Oferta del día" calcula un cierre fijo a las 23:59 — nunca recurrente
+ * [14] countdown expirado nunca se renueva solo, ni con el paso del tiempo
  *
  * Uso: npx tsx scripts/verify-quantity-packs-and-countdown.ts
  */
@@ -25,8 +31,18 @@ import {
   getActivePackLabel,
   getFirstEnabledQuantityPacksData,
 } from "../lib/product/sections/quantityPacks";
-import { getCountdownRemaining, isCountdownActive } from "../lib/product/sections/offerCountdown";
+import {
+  getCountdownRemaining,
+  isCountdownActive,
+  endOfDayIso,
+} from "../lib/product/sections/offerCountdown";
 import { getDiscountedUnitPrice } from "../lib/discounts";
+import {
+  SUGGESTED_PACK_STEPS,
+  SUGGESTED_PACK_MAX_PERCENT,
+  SUGGESTED_PACK_LABEL,
+  shouldLoadSuggestedPackTemplate,
+} from "../lib/admin/productVolumeDiscounts";
 import type { Product } from "../lib/db/types";
 import type { ProductSection, QuantityPacksData } from "../lib/product/sections/types";
 
@@ -336,6 +352,123 @@ console.log('\n[9] Selector visible: opción base "1 unidad" + tiers reales x2/x
     getFirstEnabledQuantityPacksData(withoutPacksBlock) === null,
     "sin bloque de packs en la ficha, getFirstEnabledQuantityPacksData devuelve null"
   );
+}
+
+console.log('\n[10] Plantilla inicial de "packs sugeridos": 1 unidad sin dcto., Pack x2 (5%), Pack x3 (10%)');
+{
+  assert(
+    SUGGESTED_PACK_STEPS.length === 2,
+    `la plantilla tiene exactamente 2 escalones reales (x2 y x3), obtuvo ${SUGGESTED_PACK_STEPS.length}`
+  );
+  assert(
+    SUGGESTED_PACK_STEPS[0].minQty === 2 && SUGGESTED_PACK_STEPS[0].percent === 5,
+    `primer escalón: x2 al 5% (obtuvo minQty=${SUGGESTED_PACK_STEPS[0].minQty}, percent=${SUGGESTED_PACK_STEPS[0].percent})`
+  );
+  assert(
+    SUGGESTED_PACK_STEPS[1].minQty === 3 && SUGGESTED_PACK_STEPS[1].percent === 10,
+    `segundo escalón: x3 al 10% (obtuvo minQty=${SUGGESTED_PACK_STEPS[1].minQty}, percent=${SUGGESTED_PACK_STEPS[1].percent})`
+  );
+  assert(SUGGESTED_PACK_MAX_PERCENT >= 10, "el tope máximo permite el 10% del escalón x3");
+  assert(SUGGESTED_PACK_LABEL.trim().length > 0, "la plantilla trae un texto comercial no vacío");
+
+  // La opción "1 unidad" nunca es un escalón real guardado — nace siempre
+  // como opción base del selector (ver [9]), consistente con "sin descuento".
+  const product = makeProduct({
+    price: 10000,
+    discount_enabled: true,
+    discount_max_percent: SUGGESTED_PACK_MAX_PERCENT,
+    discount_steps: SUGGESTED_PACK_STEPS,
+  });
+  const data = makePacksData({ steps: SUGGESTED_PACK_STEPS.map((s) => ({ minQty: s.minQty })) });
+  const selectorTiers = resolvePackSelectorTiers(product, data);
+  assert(
+    selectorTiers.length === 3 && selectorTiers[0].minQty === 1 && selectorTiers[0].percent === 0,
+    `con la plantilla sugerida aplicada, el selector arma 1 unidad + x2 + x3 (obtuvo ${selectorTiers.map((t) => t.minQty).join(",")})`
+  );
+}
+
+console.log('\n[11] "Aplicar packs sugeridos" nunca sobrescribe escalones ya personalizados por el admin');
+{
+  assert(
+    shouldLoadSuggestedPackTemplate(0) === true,
+    "con 0 escalones (nunca tocado o vaciado a propósito) sí se recarga la plantilla"
+  );
+  assert(
+    shouldLoadSuggestedPackTemplate(1) === false,
+    "con al menos 1 escalón ya definido (aunque sea distinto a la plantilla) NO se recarga — se respeta lo que el admin dejó"
+  );
+  assert(
+    shouldLoadSuggestedPackTemplate(2) === false,
+    "con 2 escalones ya definidos tampoco se recarga (aunque coincida en cantidad con la plantilla sugerida)"
+  );
+}
+
+console.log("\n[12] El precio mostrado con la plantilla sugerida es idéntico al que cobraría el checkout");
+{
+  const product = makeProduct({
+    price: 20000,
+    discount_enabled: true,
+    discount_max_percent: SUGGESTED_PACK_MAX_PERCENT,
+    discount_steps: SUGGESTED_PACK_STEPS,
+  });
+  const data = makePacksData({ steps: SUGGESTED_PACK_STEPS.map((s) => ({ minQty: s.minQty })) });
+  const tiers = resolvePackTiers(product, data);
+
+  for (const tier of tiers) {
+    const cartWouldCharge = getDiscountedUnitPrice(product, tier.minQty, product.price);
+    assert(
+      tier.unitPrice === cartWouldCharge,
+      `x${tier.minQty}: precio unitario del selector (${tier.unitPrice}) = precio que cobraría el checkout (${cartWouldCharge})`
+    );
+  }
+  const tierX2 = tiers.find((t) => t.minQty === 2)!;
+  const tierX3 = tiers.find((t) => t.minQty === 3)!;
+  assert(tierX2.percent === 5, `x2 aplica exactamente 5% (obtuvo ${tierX2.percent}%)`);
+  assert(tierX3.percent === 10, `x3 aplica exactamente 10% (obtuvo ${tierX3.percent}%)`);
+}
+
+console.log('\n[13] "Oferta del día" calcula un cierre fijo a las 23:59:59 — nunca recurrente');
+{
+  assert(endOfDayIso("no-es-una-fecha") === "", "fecha con formato inválido -> string vacío, no revienta");
+  assert(endOfDayIso("") === "", "fecha vacía -> string vacío");
+
+  const iso = endOfDayIso("2026-03-15");
+  const asDate = new Date(iso);
+  assert(
+    asDate.getHours() === 23 && asDate.getMinutes() === 59 && asDate.getSeconds() === 59,
+    `el cierre calculado es exactamente 23:59:59 hora local (obtuvo ${asDate.getHours()}:${asDate.getMinutes()}:${asDate.getSeconds()})`
+  );
+  assert(
+    asDate.getFullYear() === 2026 && asDate.getMonth() === 2 && asDate.getDate() === 15,
+    "la fecha calculada es exactamente el día elegido, sin desplazarse a otro día"
+  );
+
+  // Una vez calculado, es un timestamp fijo cualquiera: se comporta como
+  // cualquier `ends_at` normal (activo si es futuro, expirado si ya pasó) —
+  // nunca se recalcula en función del día "de hoy" en cada render.
+  const farFuture = endOfDayIso("2099-12-31");
+  assert(isCountdownActive({ ends_at: farFuture }), "una 'oferta del día' con fecha futura está activa");
+  const farPast = endOfDayIso("2000-01-01");
+  assert(!isCountdownActive({ ends_at: farPast }), "una 'oferta del día' con fecha pasada ya no está activa");
+}
+
+console.log("\n[14] El countdown expirado nunca se renueva solo, ni con el paso del tiempo simulado");
+{
+  const endsAt = new Date(Date.now() + 5000).toISOString(); // expira en 5 segundos reales
+  const justBeforeExpiry = new Date(Date.now() + 4000);
+  const remainingBefore = getCountdownRemaining(endsAt, justBeforeExpiry);
+  assert(remainingBefore !== null, "justo antes de expirar, todavía muestra tiempo restante");
+
+  // Simulamos el paso del tiempo (como haría el setInterval de 1s del
+  // componente) mucho más allá de la expiración — incluidos saltos grandes
+  // (ej. equivalentes a 9, 20 y 100 horas después) para descartar cualquier
+  // reinicio periódico tipo "cada 9 horas".
+  const hoursAfter = [0.01, 1, 9, 18, 20, 100, 1000];
+  for (const hours of hoursAfter) {
+    const simulatedNow = new Date(Date.now() + hours * 3600_000);
+    const remaining = getCountdownRemaining(endsAt, simulatedNow);
+    assert(remaining === null, `${hours}h después de expirar, sigue en null (nunca se reinicia solo)`);
+  }
 }
 
 if (failures > 0) {

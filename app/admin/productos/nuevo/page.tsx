@@ -11,14 +11,16 @@ import { Input } from "@/components/ui/Input";
 import { toast } from "@/components/ui/Toast";
 import { createProductAction } from "./actions";
 import {
-  ADMIN_DEFAULT_LABEL,
-  ADMIN_DEFAULT_MAX_PERCENT,
+  SUGGESTED_PACK_LABEL,
+  SUGGESTED_PACK_MAX_PERCENT,
+  SUGGESTED_PACK_STEPS,
+  shouldLoadSuggestedPackTemplate,
   validateVolumeDiscountForSave,
   volumeDiscountFormRowsToSteps,
 } from "@/lib/admin/productVolumeDiscounts";
 import {
   ProductVolumeDiscountSection,
-  defaultVolumeDiscountStepRows,
+  stepsToFormRows,
   type VolumeDiscountStepRow,
 } from "@/components/admin/ProductVolumeDiscountSection";
 import { ProductGallerySelector } from "@/components/admin/ProductGallerySelector";
@@ -208,12 +210,19 @@ export default function NuevoProductoPage() {
     sectionsBuilderRef.current?.purgeImageReference(url);
   }
 
-  const [discountEnabled, setDiscountEnabled] = useState(false);
+  // Packs sugeridos: todo producto nuevo (manual o vía Estudio IA — ambos
+  // terminan en este formulario) arranca con esta plantilla ya cargada y
+  // visible, para que el admin la vea y decida antes de guardar — no queda
+  // escondida detrás de un switch apagado. Puede editarla libremente o
+  // apagar "Aplicar packs sugeridos" para no ofrecer packs en este producto.
+  const [discountEnabled, setDiscountEnabled] = useState(true);
   const [discountMaxPercent, setDiscountMaxPercent] = useState(
-    String(ADMIN_DEFAULT_MAX_PERCENT)
+    String(SUGGESTED_PACK_MAX_PERCENT)
   );
-  const [discountLabel, setDiscountLabel] = useState(ADMIN_DEFAULT_LABEL);
-  const [discountSteps, setDiscountSteps] = useState<VolumeDiscountStepRow[]>([]);
+  const [discountLabel, setDiscountLabel] = useState(SUGGESTED_PACK_LABEL);
+  const [discountSteps, setDiscountSteps] = useState<VolumeDiscountStepRow[]>(() =>
+    stepsToFormRows(SUGGESTED_PACK_STEPS)
+  );
 
   // ── Form helpers ────────────────────────────────────────────────────────────
 
@@ -276,10 +285,14 @@ export default function NuevoProductoPage() {
   }
 
   function handleVolumeDiscountEnabled(v: boolean) {
-    if (v && discountSteps.length === 0) {
-      setDiscountMaxPercent(String(ADMIN_DEFAULT_MAX_PERCENT));
-      setDiscountLabel(ADMIN_DEFAULT_LABEL);
-      setDiscountSteps(defaultVolumeDiscountStepRows());
+    // Si el admin ya había personalizado los escalones, apagar y volver a
+    // encender "Aplicar packs sugeridos" nunca se los pisa — solo se
+    // recarga la plantilla cuando los escalones están vacíos (nunca se
+    // tocaron, o se vaciaron a propósito).
+    if (v && shouldLoadSuggestedPackTemplate(discountSteps.length)) {
+      setDiscountMaxPercent(String(SUGGESTED_PACK_MAX_PERCENT));
+      setDiscountLabel(SUGGESTED_PACK_LABEL);
+      setDiscountSteps(stepsToFormRows(SUGGESTED_PACK_STEPS));
     }
     setDiscountEnabled(v);
   }
@@ -629,6 +642,15 @@ export default function NuevoProductoPage() {
               />
             </Card>
 
+            <div className="flex flex-col gap-2 rounded-xl border border-emerald-200 bg-emerald-50/60 px-4 py-3 text-xs text-emerald-900">
+              <p className="font-semibold">✨ Packs sugeridos aplicados por defecto</p>
+              <p>
+                Todo producto nuevo arranca con Pack x2 (5% dcto.) y Pack x3 (10% dcto.) ya cargados
+                y editables abajo. Cámbialos a tu gusto o apaga &quot;Aplicar packs sugeridos&quot; si
+                este producto no debe ofrecer packs.
+              </p>
+            </div>
+
             <ProductVolumeDiscountSection
               enabled={discountEnabled}
               onEnabledChange={handleVolumeDiscountEnabled}
@@ -638,6 +660,13 @@ export default function NuevoProductoPage() {
               onLabelChange={setDiscountLabel}
               steps={discountSteps}
               onStepsChange={setDiscountSteps}
+              title="Packs y ahorro"
+              toggleLabel="Aplicar packs sugeridos"
+              helperText="Plantilla inicial: 1 unidad sin descuento, Pack x2 (5%) y Pack x3 (10%). Edita cantidades y porcentajes libremente, o apaga el switch para no ofrecer packs en este producto."
+              templateSteps={SUGGESTED_PACK_STEPS}
+              templateMaxPercent={SUGGESTED_PACK_MAX_PERCENT}
+              templateLabel={SUGGESTED_PACK_LABEL}
+              templateButtonLabel="Restaurar plantilla sugerida (x2: 5%, x3: 10%)"
             />
 
             {/* Product type */}

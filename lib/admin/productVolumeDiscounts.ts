@@ -13,6 +13,33 @@ export const ADMIN_DEFAULT_VOLUME_STEPS: AdminDiscountStep[] = [
 export const ADMIN_DEFAULT_MAX_PERCENT = 15;
 export const ADMIN_DEFAULT_LABEL = "Más unidades, mejor precio";
 
+/**
+ * Plantilla de "packs sugeridos" aplicada por defecto en la creación de todo
+ * producto nuevo (manual y vía Estudio IA — ambos flujos terminan en
+ * app/admin/productos/nuevo/page.tsx). Solo 2 escalones a propósito: 1
+ * unidad sin descuento, Pack x2 y Pack x3. Distinta de
+ * ADMIN_DEFAULT_VOLUME_STEPS (la plantilla "2–5 u." que ya existía para
+ * cuando un admin activa descuentos a mano al EDITAR un producto existente)
+ * — esa se deja intacta para no cambiar un comportamiento ya validado.
+ */
+export const SUGGESTED_PACK_STEPS: AdminDiscountStep[] = [
+  { minQty: 2, percent: 5 },
+  { minQty: 3, percent: 10 },
+];
+
+export const SUGGESTED_PACK_MAX_PERCENT = 10;
+export const SUGGESTED_PACK_LABEL = "Packs y ahorro";
+
+/**
+ * Guard real que usa "Aplicar packs sugeridos" (nuevo/page.tsx) al
+ * encenderse: solo debe recargar la plantilla si el admin no personalizó
+ * nada todavía (escalones vacíos) — nunca si ya hay escalones propios,
+ * manuales o editados. Exportada (no solo inline) para poder probarla.
+ */
+export function shouldLoadSuggestedPackTemplate(currentStepsCount: number): boolean {
+  return currentStepsCount === 0;
+}
+
 export type ParsedVolumeDiscountFields = {
   discount_enabled: boolean;
   discount_max_percent: number;

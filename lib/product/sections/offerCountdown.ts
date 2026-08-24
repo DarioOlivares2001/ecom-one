@@ -47,3 +47,20 @@ export function isCountdownActive(
 ): boolean {
   return getCountdownRemaining(data.ends_at, now) !== null;
 }
+
+/**
+ * Plantilla "Oferta del día": convierte una fecha suelta (`YYYY-MM-DD`) al
+ * ISO 8601 de las 23:59:59 LOCALES de ese mismo día. Es solo una forma
+ * rápida de rellenar `ends_at` — una vez calculado, se guarda como el mismo
+ * timestamp fijo de siempre (sin campo especial, sin recurrencia): al pasar
+ * esa hora, `getCountdownRemaining` devuelve `null` para siempre y el bloque
+ * no vuelve a aparecer solo. `""` si `dateOnly` no tiene el formato esperado.
+ */
+export function endOfDayIso(dateOnly: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateOnly.trim());
+  if (!match) return "";
+  const [, y, m, d] = match;
+  const date = new Date(Number(y), Number(m) - 1, Number(d), 23, 59, 59, 0);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toISOString();
+}

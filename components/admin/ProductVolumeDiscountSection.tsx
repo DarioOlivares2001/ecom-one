@@ -6,6 +6,7 @@ import {
   ADMIN_DEFAULT_LABEL,
   ADMIN_DEFAULT_MAX_PERCENT,
   ADMIN_DEFAULT_VOLUME_STEPS,
+  type AdminDiscountStep,
 } from "@/lib/admin/productVolumeDiscounts";
 
 const inputCls =
@@ -17,12 +18,17 @@ function newStepId() {
   return `step-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-export function defaultVolumeDiscountStepRows(): VolumeDiscountStepRow[] {
-  return ADMIN_DEFAULT_VOLUME_STEPS.map((s) => ({
+/** Convierte escalones {minQty, percent} a filas editables del formulario, con ids nuevos. */
+export function stepsToFormRows(steps: AdminDiscountStep[]): VolumeDiscountStepRow[] {
+  return steps.map((s) => ({
     id: newStepId(),
     minQty: String(s.minQty),
     percent: String(s.percent),
   }));
+}
+
+export function defaultVolumeDiscountStepRows(): VolumeDiscountStepRow[] {
+  return stepsToFormRows(ADMIN_DEFAULT_VOLUME_STEPS);
 }
 
 type Props = {
@@ -34,6 +40,18 @@ type Props = {
   onLabelChange: (v: string) => void;
   steps: VolumeDiscountStepRow[];
   onStepsChange: (rows: VolumeDiscountStepRow[]) => void;
+  /** Encabezado de la tarjeta. Default: "Descuentos por cantidad" (comportamiento sin cambios). */
+  title?: string;
+  /** Texto junto al switch principal. Default: "Activar descuentos por cantidad". */
+  toggleLabel?: string;
+  /** Texto de ayuda bajo el switch. Default: explicación genérica de cómo aplican los %. */
+  helperText?: string;
+  /** Escalones que carga el botón de plantilla. Default: ADMIN_DEFAULT_VOLUME_STEPS (2–5 u.). */
+  templateSteps?: AdminDiscountStep[];
+  templateMaxPercent?: number;
+  templateLabel?: string;
+  /** Texto del botón de plantilla. Default: "Usar plantilla sugerida (2–5 u., hasta 15%)". */
+  templateButtonLabel?: string;
 };
 
 export function ProductVolumeDiscountSection({
@@ -45,11 +63,18 @@ export function ProductVolumeDiscountSection({
   onLabelChange,
   steps,
   onStepsChange,
+  title = "Descuentos por cantidad",
+  toggleLabel = "Activar descuentos por cantidad",
+  helperText = "La primera unidad siempre va a precio lista. Los % aplican desde la cantidad mínima de cada escalón (≥ 2).",
+  templateSteps = ADMIN_DEFAULT_VOLUME_STEPS,
+  templateMaxPercent = ADMIN_DEFAULT_MAX_PERCENT,
+  templateLabel = ADMIN_DEFAULT_LABEL,
+  templateButtonLabel = "Usar plantilla sugerida (2–5 u., hasta 15%)",
 }: Props) {
   function applySuggestedTemplate() {
-    onMaxPercentChange(String(ADMIN_DEFAULT_MAX_PERCENT));
-    onLabelChange(ADMIN_DEFAULT_LABEL);
-    onStepsChange(defaultVolumeDiscountStepRows());
+    onMaxPercentChange(String(templateMaxPercent));
+    onLabelChange(templateLabel);
+    onStepsChange(stepsToFormRows(templateSteps));
   }
 
   function updateStep(id: string, key: "minQty" | "percent", value: string) {
@@ -71,7 +96,7 @@ export function ProductVolumeDiscountSection({
     <div className="rounded-xl border border-zinc-200 bg-white shadow-sm">
       <div className="border-b border-zinc-100 px-5 py-3.5">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
-          Descuentos por cantidad
+          {title}
         </h2>
       </div>
       <div className="flex flex-col gap-4 p-5">
@@ -93,13 +118,10 @@ export function ProductVolumeDiscountSection({
               )}
             />
           </div>
-          <span className="text-sm text-zinc-700">Activar descuentos por cantidad</span>
+          <span className="text-sm text-zinc-700">{toggleLabel}</span>
         </button>
 
-        <p className="text-xs text-zinc-400">
-          La primera unidad siempre va a precio lista. Los % aplican desde la cantidad mínima de cada
-          escalón (≥ 2).
-        </p>
+        <p className="text-xs text-zinc-400">{helperText}</p>
 
         {enabled ? (
           <>
@@ -109,7 +131,7 @@ export function ProductVolumeDiscountSection({
                 onClick={applySuggestedTemplate}
                 className="rounded-[var(--radius-sm)] border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-100"
               >
-                Usar plantilla sugerida (2–5 u., hasta 15%)
+                {templateButtonLabel}
               </button>
             </div>
 

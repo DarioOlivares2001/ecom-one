@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type KeyboardEvent } from "react";
+import { useId, useState } from "react";
 import Image from "next/image";
 import { motion, useReducedMotion } from "framer-motion";
 import { ShoppingBag, Star } from "lucide-react";
@@ -19,36 +19,49 @@ interface PackSelectorProps {
 
 const MAX_STACK_IMAGES = 3;
 
-/** Repite la imagen principal del producto según la cantidad del pack (tope visual de 3), con superposición. */
+/**
+ * Repite la imagen real de portada según la cantidad del pack (tope visual
+ * de 3 copias superpuestas). Para packs con más de 3 unidades, la última
+ * miniatura se reemplaza por un badge "×N" en vez de seguir apilando
+ * imágenes. Fallback a un ícono limpio si la imagen falla o no hay ninguna.
+ */
 function PackImageStack({ src, count }: { src: string; count: number }) {
   const [broken, setBroken] = useState(false);
   const showImage = !!src && !broken;
+  const overflow = count > MAX_STACK_IMAGES;
   const stackCount = Math.max(1, Math.min(count, MAX_STACK_IMAGES));
 
   return (
-    <div className="flex shrink-0 items-center">
-      {Array.from({ length: stackCount }).map((_, i) => (
-        <div
-          key={i}
-          className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full border-2 border-[var(--color-surface)] bg-zinc-100"
-          style={i === 0 ? undefined : { marginLeft: -16, zIndex: i }}
-        >
-          {showImage ? (
-            <Image
-              src={src}
-              alt=""
-              fill
-              sizes="40px"
-              className="object-cover"
-              onError={() => setBroken(true)}
-            />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center text-zinc-300">
-              <ShoppingBag className="h-4 w-4" strokeWidth={1.5} />
-            </div>
-          )}
-        </div>
-      ))}
+    <div className="flex shrink-0 items-center" aria-hidden>
+      {Array.from({ length: stackCount }).map((_, i) => {
+        const isLast = i === stackCount - 1;
+        return (
+          <div
+            key={i}
+            className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full border-2 border-[var(--color-surface)] bg-zinc-100"
+            style={i === 0 ? { zIndex: 0 } : { marginLeft: -16, zIndex: i }}
+          >
+            {isLast && overflow ? (
+              <div className="flex h-full w-full items-center justify-center bg-[var(--color-text)] text-[10px] font-extrabold text-[var(--color-surface)]">
+                ×{count}
+              </div>
+            ) : showImage ? (
+              <Image
+                src={src}
+                alt=""
+                fill
+                sizes="40px"
+                className="object-cover"
+                onError={() => setBroken(true)}
+              />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center text-zinc-300">
+                <ShoppingBag className="h-4 w-4" strokeWidth={1.5} />
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -74,56 +87,54 @@ function RadioDot({ selected }: { selected: boolean }) {
  * ni un cálculo de precio propio; `tiers` ya viene resuelto desde
  * `resolvePackSelectorTiers` (mismas funciones de `lib/discounts.ts` que
  * usan carrito/checkout).
+ *
+ * Cada tarjeta es un `<input type="radio">` real (mismo `name`, navegación
+ * con flechas nativa del navegador entre radios del mismo grupo) envuelto
+ * en un `<label>` clickeable completo — no una imitación con ARIA.
  */
 export function PackSelector({ product, tiers, qty, setQty }: PackSelectorProps) {
   const reduceMotion = useReducedMotion();
+  const groupName = useId();
   const rawImage = product.images?.[0] ?? "";
   const image = isAllowedImageSrc(rawImage) ? rawImage : "";
 
   if (tiers.length === 0) return null;
 
-  const hasSelection = tiers.some((t) => t.minQty === qty);
-
   function selectTier(tier: ResolvedPackTier) {
     setQty(() => tier.minQty);
   }
 
-  function handleKeyDown(e: KeyboardEvent<HTMLButtonElement>, index: number) {
-    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-    e.preventDefault();
-    const dir = e.key === "ArrowDown" ? 1 : -1;
-    const next = tiers[(index + dir + tiers.length) % tiers.length];
-    selectTier(next);
-    document.getElementById(`pack-tile-${next.minQty}`)?.focus();
-  }
-
   return (
-    <div className="flex flex-col gap-2.5" role="radiogroup" aria-label="Elige tu pack">
-      <span className="text-sm font-semibold text-[var(--color-text)]">Elige tu pack</span>
+    <fieldset className="flex flex-col gap-2.5 border-0 p-0 m-0">
+      <legend className="mb-0.5 text-sm font-semibold text-[var(--color-text)]">Elige tu pack</legend>
       <div className="flex flex-col gap-2">
-        {tiers.map((tier, i) => {
+        {tiers.map((tier) => {
           const selected = qty === tier.minQty;
-          const tabIndex = selected || (!hasSelection && i === 0) ? 0 : -1;
           const crossedOutPrice = tier.percent > 0 ? product.price * tier.minQty : null;
+          const inputId = `${groupName}-${tier.minQty}`;
 
           return (
-            <motion.button
+            <motion.label
               key={tier.minQty}
-              id={`pack-tile-${tier.minQty}`}
-              type="button"
-              role="radio"
-              aria-checked={selected}
-              tabIndex={tabIndex}
-              onClick={() => selectTier(tier)}
-              onKeyDown={(e) => handleKeyDown(e, i)}
+              htmlFor={inputId}
               whileTap={reduceMotion ? undefined : { scale: 0.98 }}
               className={clsx(
-                "relative flex w-full items-center gap-3 rounded-[var(--radius-md)] border-2 px-3.5 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2",
+                "relative flex w-full cursor-pointer items-center gap-3 rounded-[var(--radius-md)] border-2 px-3.5 py-3 text-left transition-colors [&:has(:focus-visible)]:ring-2 [&:has(:focus-visible)]:ring-[var(--color-primary)] [&:has(:focus-visible)]:ring-offset-2",
                 selected
                   ? "border-[var(--color-primary)] bg-[var(--color-primary)]/[0.06]"
                   : "border-[var(--color-border)] bg-[var(--color-surface)] hover:border-[var(--color-primary)]/40"
               )}
             >
+              <input
+                type="radio"
+                id={inputId}
+                name={groupName}
+                value={tier.minQty}
+                checked={selected}
+                onChange={() => selectTier(tier)}
+                className="sr-only"
+              />
+
               <PackImageStack src={image} count={tier.minQty} />
 
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -163,10 +174,10 @@ export function PackSelector({ product, tiers, qty, setQty }: PackSelectorProps)
               </div>
 
               <RadioDot selected={selected} />
-            </motion.button>
+            </motion.label>
           );
         })}
       </div>
-    </div>
+    </fieldset>
   );
 }

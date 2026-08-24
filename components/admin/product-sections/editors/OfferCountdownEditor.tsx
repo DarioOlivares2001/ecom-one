@@ -1,8 +1,17 @@
 "use client";
 
+import { useState } from "react";
+import { clsx } from "clsx";
 import type { OfferCountdownData } from "@/lib/product/sections/types";
-import { parseCountdownTarget } from "@/lib/product/sections/offerCountdown";
+import { endOfDayIso, parseCountdownTarget } from "@/lib/product/sections/offerCountdown";
 import { inputCls, labelCls, textareaCls } from "../shared";
+
+/** Hoy en formato YYYY-MM-DD, hora local del navegador. */
+function todayLocalDateValue(): string {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
 
 interface OfferCountdownEditorProps {
   data: OfferCountdownData;
@@ -26,8 +35,15 @@ function localInputValueToIso(value: string): string {
 }
 
 export function OfferCountdownEditor({ data, onChange }: OfferCountdownEditorProps) {
+  const [dailyOfferDate, setDailyOfferDate] = useState(todayLocalDateValue());
+
   function patch(next: Partial<OfferCountdownData>) {
     onChange({ ...data, ...next });
+  }
+
+  function applyDailyOfferTemplate() {
+    const iso = endOfDayIso(dailyOfferDate);
+    if (iso) patch({ ends_at: iso });
   }
 
   const target = parseCountdownTarget(data.ends_at);
@@ -83,6 +99,31 @@ export function OfferCountdownEditor({ data, onChange }: OfferCountdownEditorPro
             futura.
           </p>
         )}
+      </div>
+
+      <div className="flex flex-col gap-2 rounded-lg border border-dashed border-zinc-300 bg-zinc-50 p-3">
+        <p className="text-xs font-semibold text-zinc-700">Alternativa: Oferta del día</p>
+        <p className="text-[11px] text-zinc-500">
+          Elige una fecha concreta y el cierre se fija a las 23:59:59 de ese día (tu hora local).
+          Es solo un atajo para rellenar el campo de arriba — al expirar se oculta igual que
+          cualquier fecha, y nunca se renueva sola al día siguiente.
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="date"
+            className={clsx(inputCls, "w-auto")}
+            value={dailyOfferDate}
+            onChange={(e) => setDailyOfferDate(e.target.value)}
+          />
+          <button
+            type="button"
+            onClick={applyDailyOfferTemplate}
+            disabled={!dailyOfferDate}
+            className="rounded-[var(--radius-sm)] border border-zinc-300 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Usar esta fecha (cierra 23:59)
+          </button>
+        </div>
       </div>
     </div>
   );
