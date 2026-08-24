@@ -37,17 +37,31 @@ function byCreatedAtDesc(a: Product, b: Product): number {
   return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
 }
 
+export interface PickUpsellOptions {
+  /**
+   * Si `false`, nunca se completa el cupo con productos sin relación real
+   * (ni misma categoría ni tags en común) — la sección queda con menos
+   * resultados, o vacía, en vez de mostrar algo no afín. Por defecto `true`
+   * (comportamiento histórico: completa con cualquier producto activo).
+   * Debe pasarse explícito por el caller (ver page.tsx) — nunca implícito.
+   */
+  allowGenericFallback?: boolean;
+}
+
 /**
  * Sugiere productos relacionados en orden de relevancia real: misma
  * categoría primero, luego productos que comparten al menos un tag, y solo
- * si aún falta completar el cupo se usa cualquier otro producto activo como
- * relleno. Dentro de cada grupo, los más recientes van primero.
+ * si aún falta completar el cupo —y `allowGenericFallback` no está
+ * desactivado— se usa cualquier otro producto activo como relleno. Dentro de
+ * cada grupo, los más recientes van primero.
  */
 export function pickProductUpsellSuggestions(
   currentProduct: Product,
   products: Product[],
-  max = 4
+  max = 4,
+  options: PickUpsellOptions = {}
 ): ProductUpsellSuggestion[] {
+  const { allowGenericFallback = true } = options;
   const currentCategory = normalizeCatalogText(currentProduct.category ?? "");
   const currentTags = new Set((currentProduct.tags ?? []).map(normalizeCatalogText).filter(Boolean));
 
@@ -83,7 +97,11 @@ export function pickProductUpsellSuggestions(
   sharesTag.sort(byCreatedAtDesc);
   rest.sort(byCreatedAtDesc);
 
-  const ranked = [...sameCategory, ...sharesTag, ...rest].slice(0, max);
+  const ranked = [
+    ...sameCategory,
+    ...sharesTag,
+    ...(allowGenericFallback ? rest : []),
+  ].slice(0, max);
 
   // Sin oferta: se sugiere y se agrega siempre a precio de lista. La imagen
   // real se pasa tal cual (sin sufijos artificiales tipo "-opt.webp"); si la

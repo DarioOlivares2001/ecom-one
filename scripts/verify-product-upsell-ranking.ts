@@ -155,6 +155,43 @@ console.log("\n[8] Nunca supera el máximo pedido (4 por defecto en la ficha de 
   assert(out.length === 4, `nunca devuelve más de 4 (obtuvo ${out.length})`);
 }
 
+console.log("\n[9] allowGenericFallback: false nunca completa con productos sin relación real (tema Bienestar)");
+{
+  const current = makeProduct({ id: "current", category: "Suplementos", tags: ["magnesio"] });
+  const unrelated1 = makeProduct({ id: "unrelated-1", category: "Herramientas", tags: ["taladro"] });
+  const unrelated2 = makeProduct({ id: "unrelated-2", category: "Cocina", tags: ["sarten"] });
+
+  const withFallback = pickProductUpsellSuggestions(current, [unrelated1, unrelated2], 4, {
+    allowGenericFallback: true,
+  });
+  assert(
+    withFallback.length === 2,
+    `por defecto (allowGenericFallback: true) sigue completando con lo que haya (obtuvo ${withFallback.length})`
+  );
+
+  const withoutFallback = pickProductUpsellSuggestions(current, [unrelated1, unrelated2], 4, {
+    allowGenericFallback: false,
+  });
+  assert(
+    withoutFallback.length === 0,
+    `allowGenericFallback: false no muestra nada si no hay categoría ni tags en común (obtuvo ${JSON.stringify(withoutFallback.map((s) => s.id))})`
+  );
+
+  const sameCategoryProduct = makeProduct({ id: "same-cat", category: "Suplementos" });
+  const tagMatchProduct = makeProduct({ id: "tag-match", category: "Otra", tags: ["magnesio"] });
+  const withRealMatches = pickProductUpsellSuggestions(
+    current,
+    [unrelated1, sameCategoryProduct, tagMatchProduct],
+    4,
+    { allowGenericFallback: false }
+  );
+  assert(
+    withRealMatches.length === 2 &&
+      withRealMatches.every((s) => s.id === "same-cat" || s.id === "tag-match"),
+    `allowGenericFallback: false SÍ muestra coincidencias reales de categoría/tags, solo excluye el relleno genérico (obtuvo ${JSON.stringify(withRealMatches.map((s) => s.id))})`
+  );
+}
+
 if (failures > 0) {
   console.error(`\n${failures} aserción(es) fallaron.`);
   process.exitCode = 1;

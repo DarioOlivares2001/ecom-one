@@ -44,6 +44,7 @@ function mapStoreSettings(row: StoreSettingsRow): StoreSettings {
     text_muted_color: row.textMutedColor,
     border_color: row.borderColor,
     theme_preset: row.themePreset,
+    storefront_theme: row.storefrontTheme,
     branding_mode: row.brandingMode,
     logo_size_desktop: row.logoSizeDesktop,
     logo_size_mobile: row.logoSizeMobile,
@@ -115,6 +116,7 @@ export interface StoreSettingsUpsertInput {
   text_muted_color?: string;
   border_color?: string;
   theme_preset?: string;
+  storefront_theme?: string;
   branding_mode?: string;
   logo_size_desktop?: number;
   logo_size_mobile?: number;
@@ -169,6 +171,7 @@ function toDrizzleValues(input: StoreSettingsUpsertInput) {
   if (input.text_muted_color !== undefined) values.textMutedColor = input.text_muted_color;
   if (input.border_color !== undefined) values.borderColor = input.border_color;
   if (input.theme_preset !== undefined) values.themePreset = input.theme_preset;
+  if (input.storefront_theme !== undefined) values.storefrontTheme = input.storefront_theme;
   if (input.branding_mode !== undefined) values.brandingMode = input.branding_mode;
   if (input.logo_size_desktop !== undefined) values.logoSizeDesktop = input.logo_size_desktop;
   if (input.logo_size_mobile !== undefined) values.logoSizeMobile = input.logo_size_mobile;

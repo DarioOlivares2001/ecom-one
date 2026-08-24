@@ -15,6 +15,7 @@ import { ConfigTabs } from "./ConfigTabs";
 import { SaveSettingsForm } from "./SaveSettingsForm";
 import { fontNamesForRole } from "@/lib/fonts/registry";
 import { getAdminSessionFromCookies } from "@/lib/admin/session";
+import { STOREFRONT_THEME_LIST, resolveStorefrontTheme } from "@/lib/store-settings/storefrontThemes";
 
 export const metadata: Metadata = { title: "Configuración" };
 
@@ -67,6 +68,7 @@ async function saveSettingsAction(formData: FormData): Promise<{ error?: string;
   }
 
   const themePreset = read("theme_preset");
+  const storefrontTheme = resolveStorefrontTheme(read("storefront_theme"));
   const brandingMode = read("branding_mode");
   const brandPos = read("navbar_brand_position");
   const menuPos = read("navbar_menu_position");
@@ -147,6 +149,7 @@ async function saveSettingsAction(formData: FormData): Promise<{ error?: string;
       read("footer_background_color") || DEFAULT_STORE_SETTINGS.footer_background_color,
     footer_text_color: read("footer_text_color") || DEFAULT_STORE_SETTINGS.footer_text_color,
     theme_preset: validThemePreset,
+    storefront_theme: storefrontTheme,
     branding_mode: validBrandingMode,
     logo_size_desktop: readNumber("logo_size_desktop", DEFAULT_STORE_SETTINGS.logo_size_desktop),
     logo_size_mobile: readNumber("logo_size_mobile", DEFAULT_STORE_SETTINGS.logo_size_mobile),
@@ -236,13 +239,53 @@ export default async function ConfiguracionPage() {
   const identidadTab = (
     <>
       <div className="mb-5 rounded-lg border border-zinc-200 bg-zinc-50 p-4">
+        <h2 className="text-sm font-semibold text-zinc-800">Tema de tienda</h2>
+        <p className="mt-1 text-xs text-zinc-500">
+          Define el layout y la jerarquía de la ficha de producto — galería, orden de bloques,
+          reseñas y relacionados. No cambia colores (eso es el Preset visual, abajo) ni datos de
+          productos, checkout, URLs, SEO, pagos ni base de datos.
+        </p>
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {STOREFRONT_THEME_LIST.map((theme) => (
+            <label
+              key={theme.id}
+              className="relative flex cursor-pointer flex-col gap-2 rounded-lg border-2 border-zinc-200 bg-white p-3 transition-colors [&:has(:checked)]:border-zinc-900 [&:has(:checked)]:bg-zinc-50 [&:has(:checked)]:ring-2 [&:has(:checked)]:ring-zinc-900/10"
+            >
+              <input
+                type="radio"
+                name="storefront_theme"
+                value={theme.id}
+                defaultChecked={settings.storefront_theme === theme.id}
+                className="sr-only"
+              />
+              <span className="text-sm font-semibold text-zinc-900">{theme.name}</span>
+              <span className="text-xs leading-snug text-zinc-500">{theme.description}</span>
+              <span className="text-[11px] font-medium text-zinc-400">{theme.recommendedFor}</span>
+              <ol className="mt-1 flex flex-col gap-1 border-t border-zinc-100 pt-2">
+                {theme.structure.map((step, i) => (
+                  <li key={i} className="flex items-center gap-1.5 text-[10px] text-zinc-500">
+                    <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full bg-zinc-200 text-[8px] font-bold text-zinc-600">
+                      {i + 1}
+                    </span>
+                    {step}
+                  </li>
+                ))}
+              </ol>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <div className="mb-5 rounded-lg border border-zinc-200 bg-zinc-50 p-4">
         <h2 className="text-sm font-semibold text-zinc-800">Preset visual</h2>
         <p className="mt-1 text-xs text-zinc-500">
-          Selecciona una base de estilo o usa custom para controlar colores manuales.
+          Solo tokens de estilo (colores, tipografía, botones, badges): funciona con cualquier
+          Tema de tienda de arriba. Selecciona una base de estilo o usa custom para controlar
+          colores manuales.
         </p>
         <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
           <label className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium text-zinc-700">Tema</span>
+            <span className="text-sm font-medium text-zinc-700">Preset visual</span>
             <select
               name="theme_preset"
               defaultValue={settings.theme_preset}

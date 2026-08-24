@@ -19,6 +19,8 @@ export const storeSettings = pgTable("store_settings", {
   footerTextColor: text("footer_text_color").notNull().default("#FFFFFF"),
 
   themePreset: text("theme_preset").notNull().default("custom"),
+  /** Tema estructural del storefront (layout/composición) — independiente del preset visual (solo tokens de color/estilo). Ver lib/store-settings/storefrontThemes.ts. */
+  storefrontTheme: text("storefront_theme").notNull().default("conversion"),
   brandingMode: text("branding_mode").notNull().default("logo_and_text"),
   logoSizeDesktop: integer("logo_size_desktop").notNull().default(32),
   logoSizeMobile: integer("logo_size_mobile").notNull().default(28),

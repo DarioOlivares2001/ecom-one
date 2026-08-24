@@ -1,325 +1,48 @@
 "use client";
 
-import { useState, useRef, useEffect, useMemo } from "react";
-import Image from "next/image";
-import Link from "next/link";
-import { AnimatePresence, motion } from "framer-motion";
-import {
-  Star,
-  X,
-  ShoppingBag,
-  CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
-  Minus,
-  Plus,
-} from "lucide-react";
-import { clsx } from "clsx";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useCartStore } from "@/lib/cart/store";
 import { pixelEvents } from "@/lib/pixel/events";
-import { formatPrice } from "@/lib/utils/format";
-import { Button } from "@/components/ui/Button";
-import { Badge } from "@/components/ui/Badge";
 import { toast } from "@/components/ui/Toast";
 import { StickyAddToCart } from "@/components/store/StickyAddToCart";
-import { TrustBadges } from "@/components/store/TrustBadges";
-import { normalizeProductCategory } from "@/lib/product/categories";
 import type { Product, ProductVariant, Review } from "@/lib/db/types";
 import type { ProductUpsellSuggestion } from "@/lib/product/upsell";
 import { isAllowedImageSrc, sanitizeImageUrls } from "@/lib/images/isAllowedImageSrc";
-import {
-  ProductSectionsRenderer,
-  hasVisibleProductSections,
-} from "@/components/store/product-sections/ProductSectionsRenderer";
+import { hasVisibleProductSections } from "@/components/store/product-sections/ProductSectionsRenderer";
+import { ProductLayoutRenderer } from "@/components/store/product-layouts/ProductLayoutRenderer";
+import { ReviewModal } from "@/components/store/product-layouts/shared/ReviewModal";
+import type { ProductLayoutProps } from "@/components/store/product-layouts/types";
+import { resolveStorefrontTheme } from "@/lib/store-settings/storefrontThemes";
+import { variantLabel } from "@/components/store/product-layouts/shared/variantLabel";
 
 interface Props {
   product: Product;
   reviews: Review[];
   variants: ProductVariant[];
   upsellSuggestions?: ProductUpsellSuggestion[];
+  /** Tema estructural (layout/composición) resuelto en el servidor — nunca colores. */
+  storefrontTheme?: string;
 }
 
-// ─── Gallery ─────────────────────────────────────────────────────────────────
-
-const fadeVariants = {
-  enter: { opacity: 0 },
-  center: { opacity: 1 },
-  exit: { opacity: 0 },
-};
-
-function Gallery({ images, name }: { images: string[]; name: string }) {
-  const [active, setActive] = useState(0);
-  const touchStartX = useRef<number | null>(null);
-  const count = images.length;
-  const multiple = count > 1;
-
-  function goTo(index: number) {
-    if (index === active) return;
-    setActive(index);
-  }
-
-  function navigate(dir: -1 | 1) {
-    setActive((prev) => (prev + dir + count) % count);
-  }
-
-  function handleTouchStart(e: React.TouchEvent) {
-    touchStartX.current = e.touches[0].clientX;
-  }
-
-  function handleTouchEnd(e: React.TouchEvent) {
-    if (touchStartX.current === null) return;
-    const delta = touchStartX.current - e.changedTouches[0].clientX;
-    if (Math.abs(delta) > 28) navigate(delta > 0 ? 1 : -1);
-    touchStartX.current = null;
-  }
-
-  return (
-    <div className="flex flex-col gap-3 -mx-4 sm:-mx-6 lg:mx-0">
-
-      {/* ── Main image ── */}
-      <div
-        className={clsx(
-          "group relative aspect-square w-full touch-pan-y overflow-hidden bg-white sm:bg-[var(--color-background)]",
-          "sm:rounded-[var(--radius-lg)]"
-        )}
-        onTouchStart={multiple ? handleTouchStart : undefined}
-        onTouchEnd={multiple ? handleTouchEnd : undefined}
-      >
-        <AnimatePresence initial={false} mode="popLayout">
-          {count > 0 ? (
-            <motion.div
-              key={active}
-              variants={fadeVariants}
-              initial="enter"
-              animate="center"
-              exit="exit"
-              transition={{ duration: 0.3, ease: "easeInOut" }}
-              className="absolute inset-0"
-            >
-              <Image
-                src={images[active]}
-                alt={`${name} — imagen ${active + 1}`}
-                fill
-                sizes="(max-width: 1024px) 100vw, 50vw"
-                className="object-contain p-2 sm:p-0 sm:object-cover transition-transform duration-500 ease-out sm:group-hover:scale-[1.03]"
-                priority
-              />
-            </motion.div>
-          ) : (
-            <div className="flex h-full w-full items-center justify-center">
-              <ShoppingBag
-                className="h-16 w-16 text-[var(--color-border)]"
-                strokeWidth={1}
-              />
-            </div>
-          )}
-        </AnimatePresence>
-
-        {/* ── Arrows — hidden on mobile until hover; always visible mobile ── */}
-        {multiple && (
-          <>
-            <button
-              onClick={() => navigate(-1)}
-              aria-label="Imagen anterior"
-              className="absolute left-3 top-1/2 z-10 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-white/85 text-zinc-900 shadow-sm backdrop-blur-sm transition-all active:bg-white lg:opacity-0 lg:group-hover:opacity-100"
-            >
-              <ChevronLeft className="h-5 w-5" />
-            </button>
-            <button
-              onClick={() => navigate(1)}
-              aria-label="Imagen siguiente"
-              className="absolute right-3 top-1/2 z-10 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-white/85 text-zinc-900 shadow-sm backdrop-blur-sm transition-all active:bg-white lg:opacity-0 lg:group-hover:opacity-100"
-            >
-              <ChevronRight className="h-5 w-5" />
-            </button>
-
-            {/* Counter pill — mobile only */}
-            <div className="lg:hidden absolute bottom-3 right-3 z-10 rounded-full bg-black/50 px-2.5 py-0.5 text-[11px] font-medium text-white">
-              {active + 1} / {count}
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* ── Thumbnails — max 5 visible, scroll if more ── */}
-      {multiple && (
-        <div className="flex snap-x snap-mandatory gap-2 overflow-x-auto px-4 pb-1 sm:px-6 lg:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {images.map((src, i) => (
-            <button
-              key={i}
-              onClick={() => goTo(i)}
-              aria-label={`Ver imagen ${i + 1}`}
-              aria-current={active === i ? "true" : undefined}
-              className={clsx(
-                "relative h-16 w-16 shrink-0 snap-start overflow-hidden rounded-[var(--radius-sm)] border-2 transition-all duration-150",
-                active === i
-                  ? "border-zinc-900 opacity-100"
-                  : "border-transparent opacity-50 hover:opacity-80 hover:border-zinc-300"
-              )}
-            >
-              <Image
-                src={src}
-                alt={`${name} miniatura ${i + 1}`}
-                fill
-                sizes="64px"
-                className="object-cover"
-              />
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Stars ───────────────────────────────────────────────────────────────────
-
-function Stars({ rating, size = "sm" }: { rating: number; size?: "sm" | "md" }) {
-  const dim = size === "md" ? "h-5 w-5" : "h-4 w-4";
-  return (
-    <div className="flex items-center gap-0.5">
-      {[1, 2, 3, 4, 5].map((i) => (
-        <Star
-          key={i}
-          className={clsx(
-            dim,
-            i <= rating ? "fill-amber-400 text-amber-400" : "fill-zinc-200 text-zinc-200"
-          )}
-        />
-      ))}
-    </div>
-  );
-}
-
-// ─── Review card ─────────────────────────────────────────────────────────────
-
-function ReviewCard({ review, featured = false }: { review: Review; featured?: boolean }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 16 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: "-40px" }}
-      transition={{ duration: 0.45, ease: "easeOut" }}
-      className={clsx(
-        "flex flex-col gap-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4",
-        featured && "border-amber-300 bg-amber-50/40"
-      )}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-[var(--color-text)]">
-              {review.author_name}
-            </span>
-            {featured && (
-              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">
-                Destacada
-              </span>
-            )}
-            {review.verified && (
-              <span className="flex items-center gap-1 text-[10px] font-medium text-[var(--color-success)]">
-                <CheckCircle2 className="h-3 w-3" />
-                Compra verificada
-              </span>
-            )}
-          </div>
-          <Stars rating={review.rating} />
-        </div>
-        <time className="shrink-0 text-xs text-[var(--color-text-muted)]">
-          {new Date(review.created_at).toLocaleDateString("es-CL", {
-            month: "short",
-            year: "numeric",
-          })}
-        </time>
-      </div>
-      {review.comment &&
-        (featured ? (
-          <div>
-            <p className="text-sm leading-relaxed text-[var(--color-text-muted)] line-clamp-3">
-              {review.comment}
-            </p>
-            <a
-              href="#reviews-list"
-              className="mt-1 inline-block text-xs font-semibold text-[var(--color-primary)] hover:underline"
-            >
-              ver más
-            </a>
-          </div>
-        ) : (
-          <p className="text-sm leading-relaxed text-[var(--color-text-muted)]">
-            {review.comment}
-          </p>
-        ))}
-      {review.photo_url && (
-        <div className="relative mt-1 h-32 w-full overflow-hidden rounded-[var(--radius-sm)] bg-[var(--color-background)]">
-          <Image
-            src={review.photo_url}
-            alt={`Foto de reseña de ${review.author_name}`}
-            fill
-            sizes="420px"
-            className="object-cover"
-          />
-        </div>
-      )}
-    </motion.div>
-  );
-}
-
-// ─── Upsell thumbnail ────────────────────────────────────────────────────────
-
-function UpsellThumb({ src, alt }: { src: string; alt: string }) {
-  const [broken, setBroken] = useState(false);
-  const showImage = !!src && !broken;
-
-  return (
-    <div className="relative h-24 w-full overflow-hidden rounded-[var(--radius-sm)] bg-zinc-100">
-      {showImage ? (
-        <Image
-          src={src}
-          alt={alt}
-          fill
-          sizes="180px"
-          className="object-cover"
-          onError={() => setBroken(true)}
-        />
-      ) : (
-        <div className="flex h-full w-full items-center justify-center text-zinc-300">
-          <ShoppingBag className="h-6 w-6" strokeWidth={1.5} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Main component ──────────────────────────────────────────────────────────
-
-function variantLabel(optionValues: unknown): string {
-  if (!optionValues || typeof optionValues !== "object") return "";
-  return Object.values(optionValues as Record<string, string>)
-    .filter(Boolean)
-    .join(" / ");
-}
-
-export function ProductClient({ product, reviews, variants, upsellSuggestions = [] }: Props) {
+/**
+ * Orquestador: dueño de todo el estado y la lógica comercial (carrito,
+ * variantes, cantidad, upsell). No decide estructura/orden visual — eso lo
+ * hace `ProductLayoutRenderer` según `storefrontTheme`, componiendo los
+ * mismos datos y handlers que se arman acá (ver `ProductLayoutProps`).
+ */
+export function ProductClient({
+  product,
+  reviews,
+  variants,
+  upsellSuggestions = [],
+  storefrontTheme,
+}: Props) {
   const [selectedVariants, setSelectedVariants] = useState<Record<string, string>>({});
   const [adding, setAdding] = useState(false);
   const [qty, setQty] = useState(1);
   const mainCTARef = useRef<HTMLButtonElement>(null);
   const [addedSuggestionId, setAddedSuggestionId] = useState<string | null>(null);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
-  const [reviewSubmitting, setReviewSubmitting] = useState(false);
-  const [reviewSuccessMsg, setReviewSuccessMsg] = useState<string | null>(null);
-  const [reviewErrorMsg, setReviewErrorMsg] = useState<string | null>(null);
-  const [reviewStep, setReviewStep] = useState<1 | 2 | 3 | 4 | 5>(1);
-  const [showPhotoInput, setShowPhotoInput] = useState(false);
-  const [reviewForm, setReviewForm] = useState({
-    rating: 0,
-    author_name: "",
-    author_email: "",
-    comment: "",
-    photo_url: "",
-  });
-  const ratingAdvanceTimerRef = useRef<number | null>(null);
 
   const add = useCartStore((s) => s.add);
   const openDrawer = useCartStore((s) => s.openDrawer);
@@ -336,23 +59,16 @@ export function ProductClient({ product, reviews, variants, upsellSuggestions = 
     : null;
 
   const displayPrice = selectedRealVariant?.price ?? product.price;
-  const displayCompareAt =
-    selectedRealVariant?.compare_at_price ?? product.compare_at_price;
+  const displayCompareAt = selectedRealVariant?.compare_at_price ?? product.compare_at_price;
   const displayStock = selectedRealVariant?.stock ?? product.stock;
-  const rawDisplayImage =
-    selectedRealVariant?.image_url || product.images?.[0] || "";
+  const rawDisplayImage = selectedRealVariant?.image_url || product.images?.[0] || "";
   const displayImage = isAllowedImageSrc(rawDisplayImage) ? rawDisplayImage : "";
 
-  const hasOffer =
-    !!displayCompareAt && displayCompareAt > displayPrice;
-  const discount = hasOffer
-    ? Math.round((1 - displayPrice / displayCompareAt!) * 100)
-    : 0;
+  const hasOffer = !!displayCompareAt && displayCompareAt > displayPrice;
+  const discount = hasOffer ? Math.round((1 - displayPrice / displayCompareAt!) * 100) : 0;
   const savedAmount = hasOffer ? displayCompareAt! - displayPrice : 0;
 
-  const variantGroups = product.variants
-    ? (product.variants as Record<string, string[]>)
-    : null;
+  const variantGroups = product.variants ? (product.variants as Record<string, string[]>) : null;
 
   const selectedLegacyVariantLabel =
     Object.entries(selectedVariants)
@@ -365,9 +81,7 @@ export function ProductClient({ product, reviews, variants, upsellSuggestions = 
     : undefined;
 
   const avgRating =
-    reviews.length > 0
-      ? reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length
-      : null;
+    reviews.length > 0 ? reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length : null;
   const featuredReview = useMemo(
     () =>
       [...reviews]
@@ -386,15 +100,8 @@ export function ProductClient({ product, reviews, variants, upsellSuggestions = 
   const hasDescription = !!product.description?.trim();
   const hasModularSections = hasVisibleProductSections(product.product_sections);
   const urgencyMessage =
-    displayStock < 10
-      ? "🔥 Quedan pocas unidades"
-      : displayStock <= 30
-        ? "⚡ Alta demanda hoy"
-        : null;
-  const cartProductIds = useMemo(
-    () => new Set(cartItems.map((i) => i.product_id)),
-    [cartItems]
-  );
+    displayStock < 10 ? "🔥 Quedan pocas unidades" : displayStock <= 30 ? "⚡ Alta demanda hoy" : null;
+  const cartProductIds = useMemo(() => new Set(cartItems.map((i) => i.product_id)), [cartItems]);
   const visibleUpsells = useMemo(
     () => upsellSuggestions.filter((s) => !cartProductIds.has(s.id)).slice(0, 4),
     [upsellSuggestions, cartProductIds]
@@ -412,14 +119,6 @@ export function ProductClient({ product, reviews, variants, upsellSuggestions = 
     pixelEvents.viewContent(product);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [product.id]);
-
-  useEffect(() => {
-    return () => {
-      if (ratingAdvanceTimerRef.current) {
-        window.clearTimeout(ratingAdvanceTimerRef.current);
-      }
-    };
-  }, []);
 
   async function handleAdd() {
     if (adding || displayStock === 0) return;
@@ -440,8 +139,7 @@ export function ProductClient({ product, reviews, variants, upsellSuggestions = 
         image: displayImage,
         variant: selectedRealVariantLabel ?? selectedLegacyVariantLabel,
         option_values:
-          (selectedRealVariant?.option_values as Record<string, string> | undefined) ??
-          undefined,
+          (selectedRealVariant?.option_values as Record<string, string> | undefined) ?? undefined,
         unitListPrice: displayPrice,
         discount_enabled: product.discount_enabled,
         discount_max_percent: product.discount_max_percent,
@@ -488,686 +186,55 @@ export function ProductClient({ product, reviews, variants, upsellSuggestions = 
     window.setTimeout(() => setAddedSuggestionId((prev) => (prev === s.id ? null : prev)), 1200);
   }
 
-  async function submitReview() {
-    if (reviewSubmitting) return;
-    setReviewErrorMsg(null);
-    setReviewSuccessMsg(null);
-    setReviewSubmitting(true);
-    try {
-      const res = await fetch("/api/reviews", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          product_id: product.id,
-          rating: reviewForm.rating,
-          author_name: reviewForm.author_name.trim(),
-          author_email: reviewForm.author_email.trim(),
-          comment: reviewForm.comment.trim(),
-          photo_url: reviewForm.photo_url.trim(),
-        }),
-      });
-      const data = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) {
-        setReviewErrorMsg(data.error ?? "No pudimos enviar tu reseña.");
-        return;
-      }
-      setReviewSuccessMsg("Gracias, tu reseña será revisada antes de publicarse.");
-      setReviewForm({
-        rating: 0,
-        author_name: "",
-        author_email: "",
-        comment: "",
-        photo_url: "",
-      });
-      setShowPhotoInput(false);
-      setReviewStep(5);
-    } catch {
-      setReviewErrorMsg("No pudimos enviar tu reseña.");
-    } finally {
-      setReviewSubmitting(false);
-    }
-  }
-
-  function handleSelectRating(rating: number) {
-    setReviewForm((p) => ({ ...p, rating }));
-    if (ratingAdvanceTimerRef.current) {
-      window.clearTimeout(ratingAdvanceTimerRef.current);
-    }
-    ratingAdvanceTimerRef.current = window.setTimeout(() => {
-      setReviewStep(2);
-    }, 500);
-  }
+  const layoutProps: ProductLayoutProps = {
+    product,
+    images: sanitizeImageUrls(product.images),
+    hasDescription,
+    hasModularSections,
+    commercial: {
+      displayPrice,
+      displayCompareAt,
+      displayStock,
+      hasOffer,
+      discount,
+      savedAmount,
+      qty,
+      setQty,
+      adding,
+      handleAdd,
+      mainCTARef,
+      urgencyMessage,
+    },
+    variants: {
+      hasRealVariants,
+      activeVariants,
+      selectedRealVariant,
+      setSelectedVariantId,
+      variantGroups,
+      selectedVariants,
+      setSelectedVariants,
+    },
+    reviews: {
+      list: reviews,
+      avgRating,
+      featuredReview,
+      regularReviews,
+      onWriteReview: () => setReviewModalOpen(true),
+    },
+    upsell: {
+      visible: visibleUpsells,
+      addedSuggestionId,
+      onAdd: handleAddSuggestion,
+    },
+  };
 
   return (
-    <main className="mx-auto max-w-7xl py-8 pb-28 md:pb-8">
+    <>
+      <ProductLayoutRenderer theme={resolveStorefrontTheme(storefrontTheme)} {...layoutProps} />
 
-      {/* ── Product grid: gallery left, info right ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 lg:gap-16 lg:px-8">
+      <ReviewModal productId={product.id} open={reviewModalOpen} onClose={() => setReviewModalOpen(false)} />
 
-        {/* Gallery — full bleed on mobile, half column on desktop */}
-        <Gallery key={product.id} images={sanitizeImageUrls(product.images)} name={product.name} />
-
-        {/* Info panel — padded on mobile, flush on desktop */}
-        <div className="mt-6 flex flex-col gap-5 px-4 sm:px-6 lg:mt-0 lg:px-0">
-          {/* Badges */}
-          <div className="flex flex-wrap items-center gap-2">
-            {normalizeProductCategory(product.category) && (
-              <Badge variant="default">{normalizeProductCategory(product.category)}</Badge>
-            )}
-            {hasOffer && <Badge variant="danger">−{discount}%</Badge>}
-            {displayStock > 0 && displayStock <= 5 && (
-              <Badge variant="warning">¡Solo {displayStock} disponibles!</Badge>
-            )}
-            {displayStock === 0 && <Badge variant="danger">Agotado</Badge>}
-          </div>
-
-          {/* Name */}
-          <h1
-            className="product-title text-3xl font-bold leading-tight tracking-tight text-[var(--color-text)] sm:text-4xl"
-            style={{ fontFamily: "var(--font-heading)" }}
-          >
-            {product.name}
-          </h1>
-
-          {/* Rating summary */}
-          {avgRating !== null && (
-            <div className="flex items-center gap-2">
-              <Stars rating={avgRating} size="md" />
-              <span className="text-sm text-[var(--color-text-muted)]">
-                {reviews.length} {reviews.length === 1 ? "reseña" : "reseñas"}
-              </span>
-            </div>
-          )}
-
-          {/* Prices */}
-          <div className="flex flex-col gap-2">
-            <div className="flex flex-wrap items-baseline gap-3">
-              <div className="flex min-w-0 flex-col gap-0.5">
-                <span className="text-3xl font-bold tabular-nums text-[var(--color-text)]">
-                  {formatPrice(displayPrice)}
-                </span>
-                <span className="text-xs text-[var(--color-text-muted)]">
-                  {qty === 1 ? "1 unidad" : `${qty} unidades`} ·{" "}
-                  {formatPrice(displayPrice)} c/u
-                </span>
-              </div>
-              {hasOffer && (
-                <div className="flex min-w-0 flex-col gap-0.5">
-                  <span className="text-lg text-[var(--color-text-muted)] line-through tabular-nums">
-                    {formatPrice(displayCompareAt!)}
-                  </span>
-                  <span className="text-xs font-semibold text-emerald-700">
-                    Ahorras {formatPrice(savedAmount)} vs referencia ({discount}%)
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-          {/* Variants */}
-          {hasRealVariants ? (
-            <div id="pdp-variants" className="flex flex-col gap-2 scroll-mt-24 rounded-[var(--radius-md)] transition-shadow duration-300">
-              <span className="text-sm font-semibold text-[var(--color-text)]">Cantidad:</span>
-              <div className="flex flex-wrap gap-2">
-                {activeVariants.map((variant) => {
-                  const value = variantLabel(variant.option_values) || variant.title;
-                  const disabled = variant.stock <= 0;
-                  const selected = selectedRealVariant?.id === variant.id;
-                  return (
-                    <button
-                      key={variant.id}
-                      onClick={() => !disabled && setSelectedVariantId(variant.id)}
-                      disabled={disabled}
-                      className={clsx(
-                        "rounded-[var(--radius-sm)] border px-3 py-1.5 text-sm font-medium transition-colors",
-                        selected
-                          ? "border-transparent [background:var(--brand-gradient)] text-white"
-                          : "border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] hover:border-[var(--color-primary)]",
-                        disabled && "cursor-not-allowed opacity-45"
-                      )}
-                    >
-                      {value}
-                      {variant.badge_text ? ` ${variant.badge_text}` : ""}
-                      {disabled ? " · Agotado" : ""}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ) : variantGroups ? (
-            <div id="pdp-variants" className="flex flex-col gap-4 scroll-mt-24 rounded-[var(--radius-md)] transition-shadow duration-300">
-              {Object.entries(variantGroups).map(([group, options]) => (
-                <div key={group} className="flex flex-col gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-[var(--color-text)]">
-                      {group}:
-                    </span>
-                    {selectedVariants[group] && (
-                      <span className="text-sm text-[var(--color-text-muted)]">
-                        {selectedVariants[group]}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {options.map((opt) => {
-                      const selected = selectedVariants[group] === opt;
-                      return (
-                        <button
-                          key={opt}
-                          onClick={() =>
-                            setSelectedVariants((prev) => ({ ...prev, [group]: opt }))
-                          }
-                          className={clsx(
-                            "rounded-[var(--radius-sm)] border px-3 py-1.5 text-sm font-medium transition-colors",
-                            selected
-                              ? "border-transparent [background:var(--brand-gradient)] text-white"
-                              : "border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] hover:border-[var(--color-primary)]"
-                          )}
-                        >
-                          {opt}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : null}
-
-          {/* Cantidad (afecta precio por volumen y tabla de escalones) */}
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="text-sm font-medium text-[var(--color-text)]">Unidades</span>
-            <div className="flex items-center gap-0.5 rounded-[var(--radius-sm)] border border-[var(--color-border)] p-0.5">
-              <button
-                type="button"
-                onClick={() => setQty((q) => Math.max(1, q - 1))}
-                aria-label="Reducir cantidad"
-                className="flex h-8 w-8 items-center justify-center rounded text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-border)]/40 hover:text-[var(--color-text)] disabled:opacity-35"
-                disabled={displayStock === 0 || qty <= 1}
-              >
-                <Minus className="h-4 w-4" />
-              </button>
-              <span className="min-w-[2.25rem] text-center text-sm font-semibold tabular-nums text-[var(--color-text)]">
-                {qty}
-              </span>
-              <button
-                type="button"
-                onClick={() => setQty((q) => Math.min(displayStock, q + 1))}
-                aria-label="Aumentar cantidad"
-                className="flex h-8 w-8 items-center justify-center rounded text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-border)]/40 hover:text-[var(--color-text)] disabled:opacity-35"
-                disabled={displayStock === 0 || qty >= displayStock}
-              >
-                <Plus className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-
-          {/* Main CTA */}
-          <Button
-            ref={mainCTARef}
-            size="lg"
-            fullWidth
-            loading={adding}
-            disabled={displayStock === 0}
-            onClick={handleAdd}
-            className="mt-1"
-          >
-            {displayStock === 0 ? "Agotado" : "Agregar al carrito"}
-          </Button>
-          {urgencyMessage && (
-            <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.28, ease: "easeOut" }}
-              className={clsx(
-                "mt-2 rounded-[var(--radius-md)] border px-3 py-2 text-sm font-medium",
-                displayStock < 10
-                  ? "border-rose-200 bg-rose-50 text-rose-700"
-                  : "border-orange-200 bg-orange-50 text-orange-700"
-              )}
-            >
-              {urgencyMessage}
-            </motion.div>
-          )}
-
-          {/* Trust badges */}
-          <TrustBadges />
-        </div>
-      </div>
-
-      {/* ── Descripción / Bloques modulares ── */}
-      {hasModularSections ? (
-        <div className="mt-12 sm:mt-16">
-          <ProductSectionsRenderer sections={product.product_sections} />
-        </div>
-      ) : hasDescription ? (
-        <section className="mx-auto mt-20 max-w-2xl px-4 sm:px-6 lg:px-8">
-          <motion.h2
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-60px" }}
-            transition={{ duration: 0.5, ease: "easeOut" }}
-            className="mb-8 font-display text-2xl font-bold text-[var(--color-text)] sm:text-3xl"
-          >
-            Sobre este producto
-          </motion.h2>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-60px" }}
-            transition={{ duration: 0.55, ease: "easeOut" }}
-            className="text-[var(--color-text-muted)] [&_a]:underline [&_a:hover]:opacity-70 [&_h1]:mb-3 [&_h1]:font-display [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:text-[var(--color-text)] [&_h2]:mb-2 [&_h2]:mt-6 [&_h2]:font-display [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-[var(--color-text)] [&_h3]:mb-2 [&_h3]:mt-4 [&_h3]:font-semibold [&_h3]:text-[var(--color-text)] [&_li]:mb-1 [&_ol]:mb-4 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:mb-4 [&_p]:text-base [&_p]:leading-relaxed [&_strong]:font-semibold [&_ul]:mb-4 [&_ul]:list-disc [&_ul]:pl-5"
-            dangerouslySetInnerHTML={{ __html: product.description! }}
-          />
-        </section>
-      ) : null}
-
-      {/* ── Reviews ── */}
-      <section className={clsx("px-4 sm:px-6 lg:px-8", reviews.length > 0 ? "mt-20" : "mt-14")}>
-          <div
-            className={clsx(
-              "flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between",
-              reviews.length > 0 ? "mb-8" : "mb-3"
-            )}
-          >
-            <div>
-              <h2
-                className={clsx(
-                  "font-display font-bold text-[var(--color-text)]",
-                  reviews.length > 0 ? "text-2xl sm:text-3xl" : "text-xl"
-                )}
-              >
-                Reseñas
-              </h2>
-              {avgRating !== null && (
-                <div className="mt-2 flex items-center gap-2">
-                  <span className="text-amber-500">
-                    {"★".repeat(Math.round(avgRating))}
-                    {"☆".repeat(5 - Math.round(avgRating))}
-                  </span>
-                  <span className="text-sm text-[var(--color-text-muted)]">
-                    {avgRating.toFixed(1)} de 5 ({reviews.length} opiniones)
-                  </span>
-                </div>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setReviewModalOpen(true);
-                setReviewSuccessMsg(null);
-                setReviewErrorMsg(null);
-                setShowPhotoInput(false);
-                setReviewStep(1);
-              }}
-              className="inline-flex h-9 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-4 text-sm font-semibold text-[var(--color-text)] transition-colors hover:border-[var(--color-primary)]/35 hover:bg-[var(--color-background)]"
-            >
-              Escribir reseña
-            </button>
-          </div>
-
-          {reviews.length > 0 ? (
-            <div className="space-y-4">
-              {featuredReview && (
-                <div>
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-amber-700">
-                    Reseña destacada
-                  </p>
-                  <ReviewCard review={featuredReview} featured />
-                </div>
-              )}
-              <div id="reviews-list" className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {regularReviews.map((review) => (
-                  <ReviewCard key={review.id} review={review} />
-                ))}
-              </div>
-            </div>
-          ) : (
-            <p className="text-sm text-[var(--color-text-muted)]">
-              Aún no hay reseñas aprobadas para este producto.
-            </p>
-          )}
-        </section>
-
-      {/* ── También te puede interesar ── */}
-      {visibleUpsells.length > 0 && (
-        <section className="mt-14 px-4 sm:px-6 lg:px-8">
-          <h2 className="font-display text-xl font-bold text-[var(--color-text)] sm:text-2xl">
-            También te puede interesar
-          </h2>
-
-          <div className="mt-4 flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {visibleUpsells.map((s) => (
-              <Link
-                key={s.id}
-                href={`/productos/${s.slug}`}
-                className="block w-[152px] min-w-[152px] shrink-0 snap-start rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-2.5 shadow-sm transition-shadow hover:shadow-md sm:w-[200px] sm:min-w-[200px] lg:w-[220px] lg:min-w-[220px]"
-              >
-                <div className="flex h-full flex-col gap-2">
-                  <UpsellThumb src={s.image} alt={s.name} />
-                  <div className="flex min-w-0 flex-1 flex-col">
-                    <p className="line-clamp-2 min-h-[2.25rem] text-xs font-semibold leading-snug text-[var(--color-text)]">
-                      {s.name}
-                    </p>
-                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                      {s.price > s.offerPrice && (
-                        <span className="text-[10px] text-[var(--color-text-muted)] line-through">
-                          {formatPrice(s.price)}
-                        </span>
-                      )}
-                      <span className="text-sm font-extrabold text-[var(--color-text)]">
-                        {formatPrice(s.offerPrice)}
-                      </span>
-                    </div>
-                    {s.savings > 0 && (
-                      <p className="mt-0.5 inline-flex w-fit rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-extrabold text-emerald-700">
-                        Ahorras {formatPrice(s.savings)}
-                      </p>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      handleAddSuggestion(s);
-                    }}
-                    className="mt-1 inline-flex h-8 w-full items-center justify-center rounded-full border border-transparent [background:var(--brand-gradient)] px-3 text-xs font-bold text-white transition-transform duration-150 active:scale-[0.97]"
-                  >
-                    {addedSuggestionId === s.id ? "Agregado" : "Agregar"}
-                  </button>
-                </div>
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
-
-      <AnimatePresence>
-        {reviewModalOpen && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[80] hidden bg-black/45 backdrop-blur-[1px] md:block"
-              onClick={() => setReviewModalOpen(false)}
-            />
-            <motion.div
-              initial={{ opacity: 0, y: 18, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 12, scale: 0.98 }}
-              transition={{ duration: 0.22, ease: "easeOut" }}
-              className="fixed inset-0 z-[81] bg-[var(--color-surface)] md:left-1/2 md:top-1/2 md:h-auto md:max-h-[88vh] md:w-[92vw] md:max-w-lg md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-[var(--radius-lg)] md:border md:border-[var(--color-border)] md:shadow-[0_22px_48px_rgba(0,0,0,0.28)]"
-            >
-              <div className="flex h-full max-h-screen flex-col">
-                <div className="sticky top-0 z-10 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 md:px-5">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h3 className="font-display text-base font-bold text-[var(--color-text)] md:text-xl">
-                        Escribir reseña
-                      </h3>
-                      <p className="mt-0.5 text-xs text-[var(--color-text-muted)]">
-                        {reviewStep <= 4 ? `Paso ${reviewStep} de 4` : "Enviado"}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setReviewModalOpen(false)}
-                      aria-label="Cerrar"
-                      className="rounded-full p-1.5 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-border)]/40 hover:text-[var(--color-text)]"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                  {reviewStep <= 4 && (
-                    <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-[var(--color-border)]/50">
-                      <div
-                        className="h-full bg-brand-gradient transition-all duration-300"
-                        style={{ width: `${(reviewStep / 4) * 100}%` }}
-                      />
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex-1 overflow-y-auto px-4 py-4 md:px-5">
-                  <AnimatePresence mode="wait">
-                    {reviewStep === 1 && (
-                      <motion.div
-                        key="step-1"
-                        initial={{ opacity: 0, x: 18 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -18 }}
-                        transition={{ duration: 0.22, ease: "easeOut" }}
-                        className="mx-auto flex max-w-sm flex-col items-center justify-center py-8 text-center"
-                      >
-                        <h4 className="font-display text-xl font-bold text-[var(--color-text)]">
-                          ¿Qué te pareció el producto?
-                        </h4>
-                        <div className="mt-5 flex items-center gap-2">
-                          {[1, 2, 3, 4, 5].map((n, idx) => (
-                            <motion.button
-                              key={n}
-                              type="button"
-                              onClick={() => handleSelectRating(n)}
-                              aria-label={`Calificar con ${n} estrellas`}
-                              initial={{ opacity: 0, y: 6 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              transition={{ delay: idx * 0.04, duration: 0.18 }}
-                              whileTap={{ scale: 0.9 }}
-                              whileHover={{ scale: 1.08 }}
-                              className="rounded p-0.5"
-                            >
-                              <motion.span
-                                animate={
-                                  n === reviewForm.rating
-                                    ? { scale: [1, 1.24, 1] }
-                                    : { scale: 1 }
-                                }
-                                transition={{ duration: 0.34 }}
-                                className="inline-flex"
-                              >
-                                <Star
-                                  className={clsx(
-                                    "h-9 w-9",
-                                    n <= reviewForm.rating
-                                      ? "fill-amber-400 text-amber-400"
-                                      : "fill-zinc-200 text-zinc-200"
-                                  )}
-                                />
-                              </motion.span>
-                            </motion.button>
-                          ))}
-                        </div>
-                      </motion.div>
-                    )}
-
-                    {reviewStep === 2 && (
-                      <motion.div
-                        key="step-2"
-                        initial={{ opacity: 0, x: 18 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -18 }}
-                        transition={{ duration: 0.22, ease: "easeOut" }}
-                        className="mx-auto max-w-md space-y-4 py-3"
-                      >
-                        <h4 className="font-display text-xl font-bold text-[var(--color-text)]">
-                          ¿Tienes una foto del producto?
-                        </h4>
-                        <p className="text-sm text-[var(--color-text-muted)]">
-                          Ayuda a otros clientes mostrando cómo se ve en casa.
-                        </p>
-                        {!showPhotoInput ? (
-                          <button
-                            type="button"
-                            onClick={() => setShowPhotoInput(true)}
-                            className="inline-flex h-10 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-4 text-sm font-semibold text-[var(--color-text)] transition-colors hover:border-[var(--color-primary)]/35"
-                          >
-                            Agregar foto
-                          </button>
-                        ) : (
-                          <label className="flex flex-col gap-1">
-                            <span className="text-xs font-medium text-[var(--color-text)]">
-                              URL de foto
-                            </span>
-                            <input
-                              type="url"
-                              value={reviewForm.photo_url}
-                              onChange={(e) =>
-                                setReviewForm((p) => ({ ...p, photo_url: e.target.value }))
-                              }
-                              placeholder="https://..."
-                              className="h-10 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--color-primary)]/35"
-                            />
-                          </label>
-                        )}
-                      </motion.div>
-                    )}
-
-                    {reviewStep === 3 && (
-                      <motion.div
-                        key="step-3"
-                        initial={{ opacity: 0, x: 18 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -18 }}
-                        transition={{ duration: 0.22, ease: "easeOut" }}
-                        className="mx-auto max-w-md space-y-3 py-3"
-                      >
-                        <h4 className="font-display text-xl font-bold text-[var(--color-text)]">
-                          Cuéntanos tu experiencia
-                        </h4>
-                        <textarea
-                          required
-                          rows={7}
-                          value={reviewForm.comment}
-                          onChange={(e) =>
-                            setReviewForm((p) => ({ ...p, comment: e.target.value }))
-                          }
-                          placeholder="¿Qué te gustó del producto?"
-                          className="w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--color-primary)]/35"
-                        />
-                      </motion.div>
-                    )}
-
-                    {reviewStep === 4 && (
-                      <motion.div
-                        key="step-4"
-                        initial={{ opacity: 0, x: 18 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -18 }}
-                        transition={{ duration: 0.22, ease: "easeOut" }}
-                        className="mx-auto max-w-md space-y-3 py-3"
-                      >
-                        <h4 className="font-display text-xl font-bold text-[var(--color-text)]">
-                          Último paso
-                        </h4>
-                        <label className="flex flex-col gap-1">
-                          <span className="text-xs font-medium text-[var(--color-text)]">
-                            Nombre completo
-                          </span>
-                          <input
-                            required
-                            value={reviewForm.author_name}
-                            onChange={(e) =>
-                              setReviewForm((p) => ({ ...p, author_name: e.target.value }))
-                            }
-                            className="h-10 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--color-primary)]/35"
-                          />
-                        </label>
-                        <label className="flex flex-col gap-1">
-                          <span className="text-xs font-medium text-[var(--color-text)]">
-                            Email (opcional)
-                          </span>
-                          <input
-                            type="email"
-                            value={reviewForm.author_email}
-                            onChange={(e) =>
-                              setReviewForm((p) => ({ ...p, author_email: e.target.value }))
-                            }
-                            className="h-10 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--color-primary)]/35"
-                          />
-                        </label>
-                      </motion.div>
-                    )}
-
-                    {reviewStep === 5 && (
-                      <motion.div
-                        key="step-5"
-                        initial={{ opacity: 0, x: 18 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -18 }}
-                        transition={{ duration: 0.22, ease: "easeOut" }}
-                        className="mx-auto flex max-w-sm flex-col items-center justify-center py-10 text-center"
-                      >
-                        <h4 className="font-display text-2xl font-bold text-[var(--color-text)]">
-                          Gracias por tu reseña
-                        </h4>
-                        <p className="mt-2 text-sm text-[var(--color-text-muted)]">
-                          La revisaremos antes de publicarla.
-                        </p>
-                        {reviewSuccessMsg && (
-                          <p className="mt-3 text-xs font-semibold text-emerald-700">
-                            {reviewSuccessMsg}
-                          </p>
-                        )}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-
-                <div className="sticky bottom-0 border-t border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 md:px-5">
-                  {reviewErrorMsg && (
-                    <p className="mb-2 text-xs font-semibold text-rose-600">{reviewErrorMsg}</p>
-                  )}
-                  <div className="flex items-center gap-2">
-                    {reviewStep === 2 && (
-                      <Button variant="secondary" fullWidth onClick={() => setReviewStep(3)}>
-                        Omitir por ahora
-                      </Button>
-                    )}
-                    {reviewStep === 3 && (
-                      <Button
-                        fullWidth
-                        onClick={() => setReviewStep(4)}
-                        disabled={reviewForm.comment.trim().length < 3}
-                      >
-                        Continuar
-                      </Button>
-                    )}
-                    {reviewStep === 4 && (
-                      <Button
-                        fullWidth
-                        loading={reviewSubmitting}
-                        onClick={submitReview}
-                        disabled={reviewForm.author_name.trim().length < 2 || reviewForm.rating < 1}
-                      >
-                        Enviar reseña
-                      </Button>
-                    )}
-                    {reviewStep === 5 && (
-                      <Button fullWidth onClick={() => setReviewModalOpen(false)}>
-                        Cerrar
-                      </Button>
-                    )}
-                    {reviewStep === 1 && (
-                      <Button variant="secondary" fullWidth onClick={() => setReviewModalOpen(false)}>
-                        Cerrar
-                      </Button>
-                    )}
-                    {reviewStep === 2 && showPhotoInput && (
-                      <Button fullWidth onClick={() => setReviewStep(3)}>
-                        Continuar
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-
-      {/* ── Sticky CTA — mobile only ── */}
+      {/* ── Sticky CTA — mobile only, igual en los 4 temas ── */}
       <StickyAddToCart
         product={product}
         baseUnitPrice={displayPrice}
@@ -1178,10 +245,9 @@ export function ProductClient({ product, reviews, variants, upsellSuggestions = 
         selectedVariant={selectedRealVariantLabel ?? selectedLegacyVariantLabel}
         selectedVariantId={selectedRealVariant?.id}
         selectedOptionValues={
-          (selectedRealVariant?.option_values as Record<string, string> | undefined) ??
-          undefined
+          (selectedRealVariant?.option_values as Record<string, string> | undefined) ?? undefined
         }
       />
-    </main>
+    </>
   );
 }

@@ -178,6 +178,7 @@ export interface StoreSettings {
   text_muted_color: string;
   border_color: string;
   theme_preset: string;
+  storefront_theme: string;
   branding_mode: string;
   logo_size_desktop: number;
   logo_size_mobile: number;

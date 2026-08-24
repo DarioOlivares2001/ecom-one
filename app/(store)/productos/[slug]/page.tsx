@@ -10,6 +10,8 @@ import {
 } from "@/lib/db/repositories";
 import { pickProductUpsellSuggestions } from "@/lib/product/upsell";
 import { toPublicProduct } from "@/lib/product/toPublicProduct";
+import { getStoreSettings } from "@/lib/store-settings/getStoreSettings";
+import { resolveStorefrontTheme } from "@/lib/store-settings/storefrontThemes";
 
 interface Props {
   params: { slug: string };
@@ -78,12 +80,20 @@ export default async function ProductPage({ params }: Props) {
   const product = await getProduct(params.slug);
   if (!product) notFound();
 
-  const [reviews, variants, upsellCandidates] = await Promise.all([
+  const [reviews, variants, upsellCandidates, settings] = await Promise.all([
     getReviews(product.id),
     getProductVariants(product.id),
     getUpsellCandidates(product.id),
+    getStoreSettings(),
   ]);
-  const upsellSuggestions = pickProductUpsellSuggestions(product, upsellCandidates, 4);
+  const storefrontTheme = resolveStorefrontTheme(settings.storefront_theme);
+  // Tema Bienestar: nunca completa "También te puede interesar" con
+  // productos sin relación real (ni categoría ni tags en común) — se
+  // prefiere ocultar la sección antes que mostrar algo no afín. Explícito
+  // acá por tema, nunca implícito (ver PickUpsellOptions).
+  const upsellSuggestions = pickProductUpsellSuggestions(product, upsellCandidates, 4, {
+    allowGenericFallback: storefrontTheme !== "wellness",
+  });
 
   return (
     <ProductClient
@@ -91,6 +101,7 @@ export default async function ProductPage({ params }: Props) {
       reviews={reviews}
       variants={variants}
       upsellSuggestions={upsellSuggestions}
+      storefrontTheme={storefrontTheme}
     />
   );
 }

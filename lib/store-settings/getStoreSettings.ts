@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { ensureStoreSettingsRowExists, getStoreSettingsRow } from "@/lib/db/repositories/storeSettings";
 import type { StoreSettings } from "@/lib/db/types";
+import { resolveStorefrontTheme } from "@/lib/store-settings/storefrontThemes";
 
 const isDev = process.env.NODE_ENV !== "production";
 
@@ -27,6 +28,8 @@ export interface StoreSettingsView {
   text_muted_color: string;
   border_color: string;
   theme_preset: string;
+  /** Tema estructural (layout) — siempre uno de STOREFRONT_THEME_IDS, resuelto vía resolveStorefrontTheme(). */
+  storefront_theme: string;
   branding_mode: "logo" | "text" | "logo_and_text";
   logo_size_desktop: number;
   logo_size_mobile: number;
@@ -92,6 +95,7 @@ export const DEFAULT_STORE_SETTINGS: StoreSettingsView = {
   text_muted_color: "#6B7280",
   border_color: "#E5E7EB",
   theme_preset: "custom",
+  storefront_theme: "conversion",
   branding_mode: "text",
   logo_size_desktop: 32,
   logo_size_mobile: 28,
@@ -208,6 +212,7 @@ function normalizeSettings(row: StoreSettings | null): StoreSettingsView {
     text_muted_color: row.text_muted_color ?? DEFAULT_STORE_SETTINGS.text_muted_color,
     border_color: row.border_color ?? DEFAULT_STORE_SETTINGS.border_color,
     theme_preset: row.theme_preset ?? DEFAULT_STORE_SETTINGS.theme_preset,
+    storefront_theme: resolveStorefrontTheme(row.storefront_theme),
     branding_mode: asBrandingMode(row.branding_mode),
     logo_size_desktop: asPositiveNumber(
       row.logo_size_desktop,
@@ -302,6 +307,7 @@ async function ensureStoreSettingsRow(): Promise<StoreSettings> {
     store_name: DEFAULT_STORE_SETTINGS.store_name,
     store_tagline: DEFAULT_STORE_SETTINGS.store_tagline,
     theme_preset: DEFAULT_STORE_SETTINGS.theme_preset,
+    storefront_theme: DEFAULT_STORE_SETTINGS.storefront_theme,
     branding_mode: DEFAULT_STORE_SETTINGS.branding_mode,
     primary_color: DEFAULT_STORE_SETTINGS.primary_color,
     accent_color: DEFAULT_STORE_SETTINGS.accent_color,

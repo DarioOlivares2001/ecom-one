@@ -50,6 +50,13 @@
       "when": 1786837360064,
       "tag": "0006_fix-confirm-paid-order-awaiting-payment",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1787540243138,
+      "tag": "0007_add-storefront-theme",
+      "breakpoints": true
     }
   ]
 }

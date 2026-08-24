@@ -1,6 +1,7 @@
 "use client";
 
 import { getVisibleSections, parseProductSectionsLoose } from "@/lib/product/sections/parse";
+import type { ProductSectionList } from "@/lib/product/sections/types";
 
 import { BeforeAfterSection } from "./BeforeAfterSection";
 import { BenefitsSection } from "./BenefitsSection";
@@ -16,15 +17,23 @@ interface ProductSectionsRendererProps {
    * cosa: el componente lo valida con Zod y descarta lo inválido.
    */
   sections: unknown;
+  /**
+   * Reordena los bloques ya visibles antes de renderizar (ej. prioridad de
+   * tipos por tema estructural, ver `sortSectionsForTheme`). Nunca altera el
+   * contenido de cada bloque, solo su posición. Si se omite, se respeta el
+   * `order` que el admin ya definió — comportamiento sin cambios.
+   */
+  sortSections?: (sections: ProductSectionList) => ProductSectionList;
 }
 
 /**
  * Renderiza dinámicamente los bloques modulares de la ficha de producto.
  * Devuelve `null` si no hay bloques visibles (caller decide el fallback).
  */
-export function ProductSectionsRenderer({ sections }: ProductSectionsRendererProps) {
+export function ProductSectionsRenderer({ sections, sortSections }: ProductSectionsRendererProps) {
   const parsed = parseProductSectionsLoose(sections);
-  const visible = getVisibleSections(parsed);
+  const visibleByOrder = getVisibleSections(parsed);
+  const visible = sortSections ? sortSections(visibleByOrder) : visibleByOrder;
 
   if (visible.length === 0) return null;
 

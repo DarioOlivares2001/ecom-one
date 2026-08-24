@@ -1,0 +1,1 @@
+ALTER TABLE "store_settings" ADD COLUMN "storefront_theme" text DEFAULT 'conversion' NOT NULL;
