@@ -6,11 +6,16 @@ import { Badge } from "@/components/ui/Badge";
 import { TrustBadges } from "@/components/store/TrustBadges";
 import { normalizeProductCategory } from "@/lib/product/categories";
 import { formatPrice } from "@/lib/utils/format";
-import { getActivePackLabel } from "@/lib/product/sections/quantityPacks";
+import {
+  getActivePackLabel,
+  getFirstEnabledQuantityPacksData,
+  resolvePackSelectorTiers,
+} from "@/lib/product/sections/quantityPacks";
 import type { Product } from "@/lib/db/types";
 import type { ProductCommercialState, ProductVariantState } from "../types";
 import { Stars } from "./Stars";
 import { variantLabel } from "./variantLabel";
+import { PackSelector } from "./PackSelector";
 
 interface PurchasePanelProps {
   product: Product;
@@ -38,6 +43,8 @@ export function PurchasePanel({
   // Solo cambia el texto si el qty actual coincide con un pack real
   // configurado y activo — "Agregar al carrito" en cualquier otro caso.
   const activePackLabel = getActivePackLabel(product, commercial.qty);
+  const packsData = getFirstEnabledQuantityPacksData(product);
+  const packTiers = packsData ? resolvePackSelectorTiers(product, packsData) : [];
   const ctaLabel =
     commercial.displayStock === 0
       ? "Agotado"
@@ -204,6 +211,10 @@ export function PurchasePanel({
           </button>
         </div>
       </div>
+
+      {packTiers.length > 0 && (
+        <PackSelector product={product} tiers={packTiers} qty={commercial.qty} setQty={commercial.setQty} />
+      )}
 
       {/* Main CTA */}
       <Button

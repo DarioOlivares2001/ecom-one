@@ -2,14 +2,12 @@
 
 import { getVisibleSections, parseProductSectionsLoose } from "@/lib/product/sections/parse";
 import type { ProductSectionList } from "@/lib/product/sections/types";
-import type { Product } from "@/lib/db/types";
 
 import { BeforeAfterSection } from "./BeforeAfterSection";
 import { BenefitsSection } from "./BenefitsSection";
 import { FaqSection } from "./FaqSection";
 import { MediaStripSection } from "./MediaStripSection";
 import { OfferCountdownSection } from "./OfferCountdownSection";
-import { QuantityPacksSection } from "./QuantityPacksSection";
 import { SingleImageSection } from "./SingleImageSection";
 import { TestimonialsSection } from "./TestimonialsSection";
 import { VisualSequenceSection } from "./VisualSequenceSection";
@@ -27,26 +25,13 @@ interface ProductSectionsRendererProps {
    * `order` que el admin ya definió — comportamiento sin cambios.
    */
   sortSections?: (sections: ProductSectionList) => ProductSectionList;
-  /**
-   * Producto completo + cantidad compartida — solo los usa el bloque
-   * "Packs y ahorro" (precio/descuento real y para leer/escribir el mismo
-   * `qty` que el panel de compra y el sticky CTA, sin carrito paralelo). El
-   * resto de los bloques los ignora.
-   */
-  product?: Product;
-  commercial?: { qty: number; setQty: (updater: (q: number) => number) => void };
 }
 
 /**
  * Renderiza dinámicamente los bloques modulares de la ficha de producto.
  * Devuelve `null` si no hay bloques visibles (caller decide el fallback).
  */
-export function ProductSectionsRenderer({
-  sections,
-  sortSections,
-  product,
-  commercial,
-}: ProductSectionsRendererProps) {
+export function ProductSectionsRenderer({ sections, sortSections }: ProductSectionsRendererProps) {
   const parsed = parseProductSectionsLoose(sections);
   const visibleByOrder = getVisibleSections(parsed);
   const visible = sortSections ? sortSections(visibleByOrder) : visibleByOrder;
@@ -104,15 +89,12 @@ export function ProductSectionsRenderer({
               />
             );
           case "quantity_packs":
-            return product && commercial ? (
-              <QuantityPacksSection
-                key={section.id}
-                data={section.data}
-                product={product}
-                qty={commercial.qty}
-                setQty={commercial.setQty}
-              />
-            ) : null;
+            // El selector de packs ahora vive dentro de PurchasePanel (entre
+            // el stepper de cantidad y el CTA), no en el flujo de bloques —
+            // acá nunca se renderiza para no duplicarlo. El bloque sigue
+            // existiendo en el schema/editor admin: su `enabled` decide si
+            // PurchasePanel muestra el selector o no.
+            return null;
           case "offer_countdown":
             return <OfferCountdownSection key={section.id} data={section.data} />;
           default: {
@@ -130,9 +112,12 @@ export function ProductSectionsRenderer({
 /**
  * Helper utilitario: indica si el JSON crudo tiene al menos un bloque visible
  * para que el caller pueda decidir si mostrar el sistema modular o el HTML
- * legacy de `product.description`.
+ * legacy de `product.description`. `quantity_packs` no cuenta acá: nunca se
+ * pinta en este flujo (vive en PurchasePanel), así que un producto que solo
+ * tuviera ese bloque debe seguir cayendo al fallback de HTML/nada, no a un
+ * contenedor modular vacío.
  */
 export function hasVisibleProductSections(sections: unknown): boolean {
   const parsed = parseProductSectionsLoose(sections);
-  return parsed.some((s) => s.enabled);
+  return parsed.some((s) => s.enabled && s.type !== "quantity_packs");
 }

@@ -12,8 +12,6 @@ interface ProductContentBlockProps {
   /** Reordena los bloques modulares visibles según el tema estructural activo (ver sortSectionsForTheme). */
   sortSections?: (sections: ProductSectionList) => ProductSectionList;
   className?: string;
-  /** Cantidad compartida — solo la usa el bloque "Packs y ahorro" (ver ProductSectionsRenderer). */
-  commercial: { qty: number; setQty: (updater: (q: number) => number) => void };
 }
 
 /**
@@ -28,17 +26,11 @@ export function ProductContentBlock({
   hasDescription,
   sortSections,
   className = "mt-12 sm:mt-16",
-  commercial,
 }: ProductContentBlockProps) {
   if (hasModularSections) {
     return (
       <div className={className}>
-        <ProductSectionsRenderer
-          sections={product.product_sections}
-          sortSections={sortSections}
-          product={product}
-          commercial={commercial}
-        />
+        <ProductSectionsRenderer sections={product.product_sections} sortSections={sortSections} />
       </div>
     );
   }

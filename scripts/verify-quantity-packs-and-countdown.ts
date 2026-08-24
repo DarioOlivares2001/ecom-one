@@ -1,9 +1,9 @@
 /**
  * Prueba pura (sin DB, sin red, sin tocar productos reales) de los dos
- * bloques modulares opcionales: "Packs y ahorro" (quantity_packs) y
- * "Contador de oferta" (offer_countdown).
+ * bloques modulares opcionales: el selector de packs dentro de
+ * PurchasePanel (quantity_packs) y "Contador de oferta" (offer_countdown).
  *
- * Cubre los 8 casos pedidos:
+ * Cubre los casos pedidos:
  * [1] bloque apagado no renderiza
  * [2] sin descuentos válidos no renderiza packs
  * [3] selección de pack actualiza cantidad/precio/CTA
@@ -12,11 +12,19 @@
  * [6] countdown expirado/inválido no aparece
  * [7] orden de bloques se conserva
  * [8] estado de carrito y sticky CTA permanecen sincronizados
+ * [9] selector visible: opción base "1 unidad" + tiers reales x2/x3;
+ *     producto sin tiers reales no arma el selector (lista vacía)
  *
  * Uso: npx tsx scripts/verify-quantity-packs-and-countdown.ts
  */
 import { getVisibleSections, parseProductSectionsLoose } from "../lib/product/sections/parse";
-import { resolvePackTiers, hasValidPackTiers, getActivePackLabel } from "../lib/product/sections/quantityPacks";
+import {
+  resolvePackTiers,
+  resolvePackSelectorTiers,
+  hasValidPackTiers,
+  getActivePackLabel,
+  getFirstEnabledQuantityPacksData,
+} from "../lib/product/sections/quantityPacks";
 import { getCountdownRemaining, isCountdownActive } from "../lib/product/sections/offerCountdown";
 import { getDiscountedUnitPrice } from "../lib/discounts";
 import type { Product } from "../lib/db/types";
@@ -272,6 +280,61 @@ console.log("\n[8] El precio de un pack coincide exactamente con lo que cobrarí
   assert(
     labelFromMainCta === labelFromStickyCta && labelFromMainCta === "Pack Ahorro",
     "CTA principal y sticky CTA calculan exactamente el mismo label para el mismo qty (misma función, sin estado paralelo)"
+  );
+}
+
+console.log('\n[9] Selector visible: opción base "1 unidad" + tiers reales x2/x3; sin tiers reales, lista vacía');
+{
+  const product = makeProduct({
+    price: 10000,
+    discount_enabled: true,
+    discount_max_percent: 30,
+    discount_steps: REAL_STEPS,
+  });
+  const data = makePacksData({ steps: [{ minQty: 2 }, { minQty: 3, label: "Pack Trío" }] });
+
+  const selectorTiers = resolvePackSelectorTiers(product, data);
+  assert(selectorTiers.length === 3, `1 unidad + x2 + x3 = 3 tarjetas (obtuvo ${selectorTiers.length})`);
+
+  const base = selectorTiers[0];
+  assert(base.minQty === 1, "la primera tarjeta es siempre la opción base de 1 unidad");
+  assert(base.label === "1 unidad", "la opción base se etiqueta '1 unidad'");
+  assert(base.percent === 0 && base.savingsTotal === 0, "la opción base no tiene descuento ni ahorro inventado");
+  assert(base.unitPrice === 10000 && base.totalPrice === 10000, "la opción base cobra el precio de lista real, sin inventar nada");
+
+  const tierX2 = selectorTiers.find((t) => t.minQty === 2)!;
+  assert(tierX2.unitPrice === 9000 && tierX2.totalPrice === 18000, `x2 con 10% off: unitario 9000, total 18000 (obtuvo ${tierX2.unitPrice}/${tierX2.totalPrice})`);
+  assert(tierX2.savingsTotal === 2000, `ahorro real x2 = 2000 (obtuvo ${tierX2.savingsTotal})`);
+
+  const tierX3 = selectorTiers.find((t) => t.minQty === 3)!;
+  assert(tierX3.label === "Pack Trío", "x3 usa el label real que puso el admin");
+  assert(tierX3.unitPrice === 8000 && tierX3.totalPrice === 24000, `x3 con 20% off: unitario 8000, total 24000 (obtuvo ${tierX3.unitPrice}/${tierX3.totalPrice})`);
+  assert(tierX3.savingsTotal === 6000, `ahorro real x3 = 6000 (obtuvo ${tierX3.savingsTotal})`);
+
+  // Producto sin descuentos reales: el selector completo queda vacío (nunca
+  // se arma con solo la opción base, que sería una tarjeta trivial e inútil).
+  const noDiscount = makeProduct({ discount_enabled: false, price: 10000 });
+  assert(!hasValidPackTiers(noDiscount, data), "producto sin descuentos válidos: hasValidPackTiers es false");
+  assert(
+    resolvePackSelectorTiers(noDiscount, data).length === 0,
+    "producto sin descuentos válidos: resolvePackSelectorTiers devuelve [] (PurchasePanel no renderiza el selector)"
+  );
+
+  // getFirstEnabledQuantityPacksData: la fuente que usa PurchasePanel para
+  // saber si hay un bloque de packs activo en la ficha.
+  const withPacksBlock = makeProduct({
+    product_sections: [
+      { id: "s1", enabled: true, order: 0, type: "quantity_packs", data },
+    ] as unknown as Product["product_sections"],
+  });
+  assert(
+    getFirstEnabledQuantityPacksData(withPacksBlock) !== null,
+    "getFirstEnabledQuantityPacksData encuentra el bloque habilitado"
+  );
+  const withoutPacksBlock = makeProduct({ product_sections: [] });
+  assert(
+    getFirstEnabledQuantityPacksData(withoutPacksBlock) === null,
+    "sin bloque de packs en la ficha, getFirstEnabledQuantityPacksData devuelve null"
   );
 }
 

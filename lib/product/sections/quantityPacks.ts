@@ -73,17 +73,53 @@ export function hasValidPackTiers(product: PackPricingInput, data: QuantityPacks
 }
 
 /**
+ * Datos del primer bloque "Packs y ahorro" habilitado de la ficha (a lo
+ * sumo uno se renderiza — el selector ahora vive en el panel de compra, no
+ * en el flujo de bloques reordenables). `null` si no hay ninguno.
+ */
+export function getFirstEnabledQuantityPacksData(product: Product): QuantityPacksData | null {
+  const sections = getVisibleSections(parseProductSectionsLoose(product.product_sections));
+  const section = sections.find((s) => s.type === "quantity_packs");
+  return section ? section.data : null;
+}
+
+/**
  * Busca, entre los bloques "Packs y ahorro" habilitados de la ficha, uno cuyo
  * escalón real coincida exactamente con `qty` — para que el CTA principal (y
  * el sticky) puedan mostrar "Agregar {label} al carrito". Devuelve `null` si
  * no hay ningún bloque de packs activo o si `qty` no coincide con ninguno.
  */
 export function getActivePackLabel(product: Product, qty: number): string | null {
-  const sections = getVisibleSections(parseProductSectionsLoose(product.product_sections));
-  for (const section of sections) {
-    if (section.type !== "quantity_packs") continue;
-    const tier = resolvePackTiers(product, section.data).find((t) => t.minQty === qty);
-    if (tier) return tier.label;
-  }
-  return null;
+  const data = getFirstEnabledQuantityPacksData(product);
+  if (!data) return null;
+  const tier = resolvePackTiers(product, data).find((t) => t.minQty === qty);
+  return tier ? tier.label : null;
+}
+
+/**
+ * Igual que `resolvePackTiers`, pero antepone la opción base "1 unidad" a
+ * precio de lista (sin descuento) — es lo que consume el selector visible
+ * del panel de compra: el admin nunca configura este primer tile, siempre
+ * existe si hay al menos un pack real que mostrar. Si no hay ningún pack
+ * real (`resolvePackTiers` vacío), devuelve `[]` — nunca un selector de una
+ * sola opción trivial.
+ */
+export function resolvePackSelectorTiers(
+  product: PackPricingInput,
+  data: QuantityPacksData
+): ResolvedPackTier[] {
+  const realTiers = resolvePackTiers(product, data);
+  if (realTiers.length === 0) return [];
+
+  const price = Number.isFinite(product.price) ? Math.max(0, Math.round(product.price)) : 0;
+  const baseTier: ResolvedPackTier = {
+    minQty: 1,
+    label: "1 unidad",
+    percent: 0,
+    unitPrice: price,
+    totalPrice: price,
+    savingsTotal: 0,
+    isMostChosen: false,
+  };
+  return [baseTier, ...realTiers];
 }
