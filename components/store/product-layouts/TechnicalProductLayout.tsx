@@ -45,6 +45,7 @@ export function TechnicalProductLayout({
         hasDescription={hasDescription}
         sortSections={(sections) => sortSectionsForTheme(sections, "technical")}
         className="mt-10 sm:mt-12"
+        commercial={{ qty: commercial.qty, setQty: commercial.setQty }}
       />
 
       <ReviewsSection reviews={reviews} />

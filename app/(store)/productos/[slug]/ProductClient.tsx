@@ -237,6 +237,7 @@ export function ProductClient({
       {/* ── Sticky CTA — mobile only, igual en los 4 temas ── */}
       <StickyAddToCart
         product={product}
+        quantity={qty}
         baseUnitPrice={displayPrice}
         compareAtPrice={displayCompareAt ?? null}
         stock={displayStock}

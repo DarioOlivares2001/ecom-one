@@ -39,6 +39,7 @@ export function ConversionProductLayout({
         product={product}
         hasModularSections={hasModularSections}
         hasDescription={hasDescription}
+        commercial={{ qty: commercial.qty, setQty: commercial.setQty }}
       />
 
       <ReviewsSection reviews={reviews} />

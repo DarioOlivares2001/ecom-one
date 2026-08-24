@@ -521,6 +521,8 @@ export default function NuevoProductoPage() {
               initialSections={aiSections ?? []}
               hiddenInputName="product_sections_json"
               images={productMedia}
+              discountEnabled={discountEnabled}
+              discountSteps={volumeDiscountFormRowsToSteps(discountSteps)}
               onSectionsChange={setSectionsSnapshot}
             />
           </div>

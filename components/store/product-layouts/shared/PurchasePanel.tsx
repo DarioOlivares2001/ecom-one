@@ -7,6 +7,7 @@ import { TrustBadges } from "@/components/store/TrustBadges";
 import { ProductTieredDiscount } from "@/components/store/ProductTieredDiscount";
 import { normalizeProductCategory } from "@/lib/product/categories";
 import { formatPrice } from "@/lib/utils/format";
+import { getActivePackLabel } from "@/lib/product/sections/quantityPacks";
 import type { Product } from "@/lib/db/types";
 import type { ProductCommercialState, ProductVariantState } from "../types";
 import { Stars } from "./Stars";
@@ -38,6 +39,15 @@ export function PurchasePanel({
 }: PurchasePanelProps) {
   const compact = density === "compact";
   const category = normalizeProductCategory(product.category);
+  // Solo cambia el texto si el qty actual coincide con un pack real
+  // configurado y activo — "Agregar al carrito" en cualquier otro caso.
+  const activePackLabel = getActivePackLabel(product, commercial.qty);
+  const ctaLabel =
+    commercial.displayStock === 0
+      ? "Agotado"
+      : activePackLabel
+        ? `Agregar ${activePackLabel} al carrito`
+        : "Agregar al carrito";
 
   return (
     <div className={clsx("flex flex-col px-4 sm:px-6 lg:px-0", compact ? "gap-3.5" : "gap-5")}>
@@ -220,7 +230,7 @@ export function PurchasePanel({
         onClick={commercial.handleAdd}
         className="mt-1"
       >
-        {commercial.displayStock === 0 ? "Agotado" : "Agregar al carrito"}
+        {ctaLabel}
       </Button>
       {showUrgency && commercial.urgencyMessage && (
         <motion.div

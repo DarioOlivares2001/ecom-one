@@ -14,12 +14,20 @@ import type { Product } from "@/lib/db/types";
 import { productRequiresVariantChoice } from "@/lib/product/catalogVariants";
 import { getDiscountedUnitPrice } from "@/lib/discounts";
 import { isAllowedImageSrc } from "@/lib/images/isAllowedImageSrc";
+import { getActivePackLabel } from "@/lib/product/sections/quantityPacks";
 
 interface StickyAddToCartProps {
   product: Product;
   /** Ref al CTA principal del hero; el sticky aparece cuando ese CTA sale del viewport. */
   targetRef: RefObject<HTMLElement>;
-  /** Precio lista (variante o producto). Si se envía, el sticky aplica descuento por cantidad a 1u. */
+  /**
+   * Cantidad seleccionada en el panel de compra — el mismo `qty` que usa el
+   * CTA principal (incluido el que fija un pack de "Packs y ahorro"). Sin
+   * esto el sticky quedaba fijo en 1 unidad sin importar lo elegido arriba
+   * (carrito paralelo). Default 1 por compatibilidad.
+   */
+  quantity?: number;
+  /** Precio lista (variante o producto). Si se envía, el sticky aplica descuento por cantidad a la cantidad seleccionada. */
   baseUnitPrice?: number;
   /** Alias retrocompatible de `baseUnitPrice`. */
   price?: number;
@@ -43,6 +51,7 @@ const DEFAULT_VARIANTS_ANCHOR = "pdp-variants";
 export function StickyAddToCart({
   product,
   targetRef,
+  quantity = 1,
   baseUnitPrice,
   price,
   compareAtPrice,
@@ -58,6 +67,7 @@ export function StickyAddToCart({
   const add = useCartStore((s) => s.add);
   const openDrawer = useCartStore((s) => s.openDrawer);
 
+  const safeQuantity = Number.isFinite(quantity) && quantity > 0 ? Math.floor(quantity) : 1;
   const listUnit = baseUnitPrice ?? price ?? product.price;
   const volumeInput = {
     price: listUnit,
@@ -66,7 +76,8 @@ export function StickyAddToCart({
     discount_steps: product.discount_steps,
     discount_label: product.discount_label,
   };
-  const displayUnit = getDiscountedUnitPrice(volumeInput, 1, listUnit);
+  const displayUnit = getDiscountedUnitPrice(volumeInput, safeQuantity, listUnit);
+  const activePackLabel = getActivePackLabel(product, safeQuantity);
   const effectiveStock = stock ?? product.stock;
   const rawImage = image ?? product.images?.[0] ?? "";
   const allowedImage = isAllowedImageSrc(rawImage) ? rawImage : "";
@@ -135,7 +146,7 @@ export function StickyAddToCart({
         variant_id: selectedVariantId,
         name: product.name,
         price: listUnit,
-        quantity: 1,
+        quantity: safeQuantity,
         image: effectiveImage,
         variant: selectedVariant,
         option_values: selectedOptionValues,
@@ -149,7 +160,7 @@ export function StickyAddToCart({
         toast.error("Selecciona una variante en la ficha antes de agregar.");
         return;
       }
-      pixelEvents.addToCart(product, 1);
+      pixelEvents.addToCart(product, safeQuantity);
       openDrawer();
     } finally {
       setAdding(false);
@@ -160,7 +171,9 @@ export function StickyAddToCart({
     ? "Agotado"
     : needsVariantPick
       ? "Elegir opciones"
-      : "Agregar al carrito";
+      : activePackLabel
+        ? `Agregar ${activePackLabel}`
+        : "Agregar al carrito";
 
   return (
     // md:hidden — solo mobile; el wrapper queda para que AnimatePresence funcione
@@ -209,6 +222,11 @@ export function StickyAddToCart({
                     : product.name}
                 </p>
                 <div className="mt-0.5 flex items-baseline gap-1.5">
+                  {safeQuantity > 1 && (
+                    <span className="text-[11px] font-bold tabular-nums text-zinc-500">
+                      x{safeQuantity}
+                    </span>
+                  )}
                   <span className="text-base font-extrabold tabular-nums text-zinc-900">
                     {formatPrice(displayUnit)}
                   </span>

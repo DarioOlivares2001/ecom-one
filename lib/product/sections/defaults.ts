@@ -4,8 +4,10 @@ import type {
   FaqData,
   MeasurementsData,
   MediaStripData,
+  OfferCountdownData,
   ProductSection,
   ProductSectionType,
+  QuantityPacksData,
   TestimonialsData,
   UsageData,
   VersatilityData,
@@ -106,6 +108,14 @@ export function defaultVisualSequenceData(): VisualSequenceData {
   return { slides: [] };
 }
 
+export function defaultQuantityPacksData(): QuantityPacksData {
+  return { heading: "Packs y ahorro", description: "", steps: [], mostChosenMinQty: null };
+}
+
+export function defaultOfferCountdownData(): OfferCountdownData {
+  return { heading: "Oferta por tiempo limitado", message: "", ends_at: "" };
+}
+
 // ─── Factory ─────────────────────────────────────────────────────────────────
 
 export function createNewSection(
@@ -132,6 +142,10 @@ export function createNewSection(
       return { ...base, type: "measurements", data: defaultMeasurementsData() };
     case "versatility":
       return { ...base, type: "versatility", data: defaultVersatilityData() };
+    case "quantity_packs":
+      return { ...base, type: "quantity_packs", data: defaultQuantityPacksData() };
+    case "offer_countdown":
+      return { ...base, type: "offer_countdown", data: defaultOfferCountdownData() };
     default: {
       const _exhaustive: never = type;
       throw new Error(`Tipo de sección desconocido: ${String(_exhaustive)}`);

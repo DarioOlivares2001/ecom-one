@@ -48,6 +48,7 @@ export function WellnessProductLayout({
         hasDescription={hasDescription}
         sortSections={(sections) => sortSectionsForTheme(sections, "wellness")}
         className="mt-16 sm:mt-24"
+        commercial={{ qty: commercial.qty, setQty: commercial.setQty }}
       />
 
       <ReviewsSection reviews={reviews} roomy />

@@ -94,6 +94,10 @@ function purgeFromSection(section: ProductSection, url: string): ProductSection 
     }
     case "faq":
       return section;
+    case "quantity_packs":
+      return section;
+    case "offer_countdown":
+      return section;
     default: {
       const _exhaustive: never = section;
       return _exhaustive;

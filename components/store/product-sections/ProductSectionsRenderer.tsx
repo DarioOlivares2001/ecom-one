@@ -2,11 +2,14 @@
 
 import { getVisibleSections, parseProductSectionsLoose } from "@/lib/product/sections/parse";
 import type { ProductSectionList } from "@/lib/product/sections/types";
+import type { Product } from "@/lib/db/types";
 
 import { BeforeAfterSection } from "./BeforeAfterSection";
 import { BenefitsSection } from "./BenefitsSection";
 import { FaqSection } from "./FaqSection";
 import { MediaStripSection } from "./MediaStripSection";
+import { OfferCountdownSection } from "./OfferCountdownSection";
+import { QuantityPacksSection } from "./QuantityPacksSection";
 import { SingleImageSection } from "./SingleImageSection";
 import { TestimonialsSection } from "./TestimonialsSection";
 import { VisualSequenceSection } from "./VisualSequenceSection";
@@ -24,13 +27,26 @@ interface ProductSectionsRendererProps {
    * `order` que el admin ya definió — comportamiento sin cambios.
    */
   sortSections?: (sections: ProductSectionList) => ProductSectionList;
+  /**
+   * Producto completo + cantidad compartida — solo los usa el bloque
+   * "Packs y ahorro" (precio/descuento real y para leer/escribir el mismo
+   * `qty` que el panel de compra y el sticky CTA, sin carrito paralelo). El
+   * resto de los bloques los ignora.
+   */
+  product?: Product;
+  commercial?: { qty: number; setQty: (updater: (q: number) => number) => void };
 }
 
 /**
  * Renderiza dinámicamente los bloques modulares de la ficha de producto.
  * Devuelve `null` si no hay bloques visibles (caller decide el fallback).
  */
-export function ProductSectionsRenderer({ sections, sortSections }: ProductSectionsRendererProps) {
+export function ProductSectionsRenderer({
+  sections,
+  sortSections,
+  product,
+  commercial,
+}: ProductSectionsRendererProps) {
   const parsed = parseProductSectionsLoose(sections);
   const visibleByOrder = getVisibleSections(parsed);
   const visible = sortSections ? sortSections(visibleByOrder) : visibleByOrder;
@@ -87,6 +103,18 @@ export function ProductSectionsRenderer({ sections, sortSections }: ProductSecti
                 fallbackEyebrow="Versatilidad"
               />
             );
+          case "quantity_packs":
+            return product && commercial ? (
+              <QuantityPacksSection
+                key={section.id}
+                data={section.data}
+                product={product}
+                qty={commercial.qty}
+                setQty={commercial.setQty}
+              />
+            ) : null;
+          case "offer_countdown":
+            return <OfferCountdownSection key={section.id} data={section.data} />;
           default: {
             // Garantía de exhaustividad para futuras secciones nuevas.
             const _exhaustive: never = section;

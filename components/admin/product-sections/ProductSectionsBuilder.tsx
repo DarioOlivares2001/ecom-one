@@ -14,20 +14,25 @@ import type {
   FaqData,
   MeasurementsData,
   MediaStripData,
+  OfferCountdownData,
   ProductSection,
   ProductSectionList,
   ProductSectionType,
+  QuantityPacksData,
   TestimonialsData,
   UsageData,
   VersatilityData,
   VisualSequenceData,
 } from "@/lib/product/sections/types";
+import type { AdminDiscountStep } from "@/lib/admin/productVolumeDiscounts";
 
 import { AddSectionMenu } from "./AddSectionMenu";
 import { BeforeAfterEditor } from "./editors/BeforeAfterEditor";
 import { BenefitsEditor } from "./editors/BenefitsEditor";
 import { FaqEditor } from "./editors/FaqEditor";
 import { MediaStripEditor } from "./editors/MediaStripEditor";
+import { OfferCountdownEditor } from "./editors/OfferCountdownEditor";
+import { QuantityPacksEditor } from "./editors/QuantityPacksEditor";
 import { SingleImageEditor } from "./editors/SingleImageEditor";
 import { TestimonialsEditor } from "./editors/TestimonialsEditor";
 import { VisualSequenceEditor } from "./editors/VisualSequenceEditor";
@@ -45,6 +50,9 @@ interface ProductSectionsBuilderProps {
   hiddenInputName: string;
   /** Biblioteca de medios del producto (`product_media`), para los selectores de imagen de cada bloque. */
   images: string[];
+  /** Estado actual (sin guardar) de "Descuentos por volumen" del mismo formulario — solo para el editor de "Packs y ahorro". */
+  discountEnabled: boolean;
+  discountSteps: AdminDiscountStep[];
   /**
    * Espejo de solo lectura del estado interno hacia el padre — no cambia el
    * comportamiento uncontrolled del componente, solo le permite al padre (ej.
@@ -60,7 +68,7 @@ export const ProductSectionsBuilder = forwardRef<
   ProductSectionsBuilderHandle,
   ProductSectionsBuilderProps
 >(function ProductSectionsBuilder(
-  { initialSections, hiddenInputName, images, onSectionsChange },
+  { initialSections, hiddenInputName, images, discountEnabled, discountSteps, onSectionsChange },
   ref,
 ) {
   // El componente es UNCONTROLLED: parseamos `initialSections` una sola vez al
@@ -268,6 +276,24 @@ export const ProductSectionsBuilder = forwardRef<
                     images={images}
                     headingPlaceholder='Ej: "Versatilidad"'
                     onChange={(next: VersatilityData) =>
+                      handleUpdateData(section.id, next)
+                    }
+                  />
+                )}
+                {section.type === "quantity_packs" && (
+                  <QuantityPacksEditor
+                    data={section.data}
+                    discountEnabled={discountEnabled}
+                    discountSteps={discountSteps}
+                    onChange={(next: QuantityPacksData) =>
+                      handleUpdateData(section.id, next)
+                    }
+                  />
+                )}
+                {section.type === "offer_countdown" && (
+                  <OfferCountdownEditor
+                    data={section.data}
+                    onChange={(next: OfferCountdownData) =>
                       handleUpdateData(section.id, next)
                     }
                   />

@@ -509,6 +509,8 @@ export function EditProductoForm({
               initialSections={product.product_sections ?? []}
               hiddenInputName="product_sections_json"
               images={productMedia}
+              discountEnabled={discountEnabled}
+              discountSteps={volumeDiscountFormRowsToSteps(discountSteps)}
               onSectionsChange={setSectionsSnapshot}
             />
           </div>

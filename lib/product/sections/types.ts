@@ -145,6 +145,45 @@ export const visualSequenceDataSchema = z.object({
   slides: z.array(visualSlideSchema).max(12).default([]),
 });
 
+/**
+ * Bloque "Packs y ahorro": presenta un SUBCONJUNTO de los escalones reales de
+ * `products.discount_steps` (lib/discounts.ts) como tarjetas seleccionables.
+ * Nunca inventa un precio o porcentaje — `minQty` es una referencia al
+ * escalón real; si ese escalón ya no existe (el admin lo borró en la sección
+ * de descuentos por volumen), la tarjeta simplemente no se muestra en el
+ * storefront (ver lib/product/sections/quantityPacks.ts).
+ */
+export const quantityPackStepRefSchema = z.object({
+  /** Referencia a `discount_steps[].minQty` — no un precio ni porcentaje propio. */
+  minQty: z.number().int().min(2),
+  /** Nombre visible del pack (ej. "Pack Dúo"). Si se omite, la UI usa "x{minQty}". */
+  label: z.string().trim().max(40).optional(),
+});
+
+export const quantityPacksDataSchema = z.object({
+  heading: z.string().trim().max(80).optional(),
+  description: z.string().trim().max(240).optional(),
+  steps: z.array(quantityPackStepRefSchema).min(1).max(6),
+  /**
+   * `minQty` del escalón marcado como "Más elegido" por el admin, o `null` si
+   * ninguno — nunca se infiere ni se calcula automáticamente.
+   */
+  mostChosenMinQty: z.number().int().min(2).nullable().default(null),
+});
+
+/**
+ * Bloque "Contador de oferta": cuenta regresiva real hacia una fecha/hora que
+ * el admin define explícitamente. Sin fecha, con fecha inválida o ya pasada,
+ * el bloque no se renderiza (ver lib/product/sections/offerCountdown.ts) —
+ * nunca un temporizador que se reinicia solo ni una fecha inventada.
+ */
+export const offerCountdownDataSchema = z.object({
+  heading: z.string().trim().max(80).optional(),
+  message: z.string().trim().max(140).optional(),
+  /** ISO 8601 (con offset) de término. Vacío = bloque sin fecha configurada (no se renderiza). */
+  ends_at: z.string().trim().optional().default(""),
+});
+
 // ─── Base + discriminated union ──────────────────────────────────────────────
 
 export const sectionBaseSchema = z.object({
@@ -190,6 +229,14 @@ export const sectionSchema = z.discriminatedUnion("type", [
     type: z.literal("versatility"),
     data: versatilityDataSchema,
   }),
+  sectionBaseSchema.extend({
+    type: z.literal("quantity_packs"),
+    data: quantityPacksDataSchema,
+  }),
+  sectionBaseSchema.extend({
+    type: z.literal("offer_countdown"),
+    data: offerCountdownDataSchema,
+  }),
 ]);
 
 export const productSectionsSchema = z.array(sectionSchema).max(20);
@@ -209,6 +256,9 @@ export type VisualSequenceData = z.infer<typeof visualSequenceDataSchema>;
 export type UsageData = z.infer<typeof usageDataSchema>;
 export type MeasurementsData = z.infer<typeof measurementsDataSchema>;
 export type VersatilityData = z.infer<typeof versatilityDataSchema>;
+export type QuantityPackStepRef = z.infer<typeof quantityPackStepRefSchema>;
+export type QuantityPacksData = z.infer<typeof quantityPacksDataSchema>;
+export type OfferCountdownData = z.infer<typeof offerCountdownDataSchema>;
 export type ProductSection = z.infer<typeof sectionSchema>;
 export type ProductSectionList = z.infer<typeof productSectionsSchema>;
 export type ProductSectionType = ProductSection["type"];
@@ -267,5 +317,16 @@ export const SECTION_REGISTRY: {
     type: "testimonials",
     label: "Testimonios",
     description: "Tarjetas curadas con foto, nombre y comentario.",
+  },
+  {
+    type: "quantity_packs",
+    label: "Packs y ahorro",
+    description:
+      "Tarjetas seleccionables con los escalones reales de descuento por cantidad. Requiere tener descuentos por volumen configurados.",
+  },
+  {
+    type: "offer_countdown",
+    label: "Contador de oferta",
+    description: "Cuenta regresiva real hacia una fecha/hora que tú defines. Sin fecha configurada, no se muestra.",
   },
 ];

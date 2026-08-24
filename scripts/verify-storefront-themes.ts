@@ -96,6 +96,16 @@ function makeSection(type: ProductSection["type"], order: number): ProductSectio
       return { id, enabled: true, order, type: "before_after", data: { layout: "side_by_side" } };
     case "visual_sequence":
       return { id, enabled: true, order, type: "visual_sequence", data: { slides: [] } };
+    case "quantity_packs":
+      return {
+        id,
+        enabled: true,
+        order,
+        type: "quantity_packs",
+        data: { steps: [{ minQty: 2 }], mostChosenMinQty: null },
+      };
+    case "offer_countdown":
+      return { id, enabled: true, order, type: "offer_countdown", data: { ends_at: "" } };
     default: {
       const _exhaustive: never = type;
       throw new Error(`tipo no soportado en el test: ${_exhaustive}`);
