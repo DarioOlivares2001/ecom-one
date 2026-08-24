@@ -32,20 +32,61 @@ export const AI_PRODUCT_STUDIO_TONE_LABELS: Record<AIProductStudioTone, string> 
 
 export const MAX_SUPPLIER_TEXT_LENGTH = 6000;
 export const MAX_SELECTED_IMAGES = 6;
+/**
+ * Antes en 240 — causaba que "Generar con IA" rechazara TODA la generación
+ * (con el mensaje crudo de Zod, sin traducir) apenas la instrucción
+ * comercial pasaba de un par de frases, algo perfectamente razonable para un
+ * brief real (ver bug reportado: creativos de magnesio). 500 alcanza para un
+ * párrafo corto de dirección creativa sin dejar de ser un campo acotado.
+ */
+export const MAX_COMMERCIAL_GOAL_LENGTH = 500;
 
 export const aiProductStudioInputSchema = z.object({
   /** Texto/ficha tal como lo entrega el proveedor — la única fuente de hechos del producto. */
   supplierText: z.string().trim().min(1, "Pega el texto o ficha del proveedor.").max(MAX_SUPPLIER_TEXT_LENGTH, "El texto del proveedor es demasiado largo."),
   /** URLs elegidas desde `product_media` (biblioteca ya subida) — nunca se suben imágenes nuevas acá. */
   selectedImages: z
-    .array(z.string().url())
+    .array(z.string().url("Cada imagen debe ser una URL válida."))
     .min(1, "Selecciona al menos una imagen de la biblioteca.")
     .max(MAX_SELECTED_IMAGES, `Selecciona como máximo ${MAX_SELECTED_IMAGES} imágenes.`),
   /** Instrucción comercial libre y opcional (ej. "enfócalo en espacios pequeños"). Solo orienta tono/énfasis, nunca inventa datos. */
-  commercialGoal: z.string().trim().max(240).optional(),
+  commercialGoal: z
+    .string()
+    .trim()
+    .max(MAX_COMMERCIAL_GOAL_LENGTH, `La instrucción comercial no puede superar los ${MAX_COMMERCIAL_GOAL_LENGTH} caracteres.`)
+    .optional(),
   tone: z.enum(AI_PRODUCT_STUDIO_TONES),
 });
 export type AIProductStudioInput = z.infer<typeof aiProductStudioInputSchema>;
+
+/**
+ * Nombre visible en español de cada campo de `aiProductStudioInputSchema` —
+ * usado por `describeAIProductStudioInputError` para que un error de
+ * validación siempre diga QUÉ campo falló, nunca solo el mensaje crudo de
+ * Zod ("String must contain at most...").
+ */
+const AI_PRODUCT_STUDIO_INPUT_FIELD_LABELS: Record<string, string> = {
+  supplierText: "Texto del proveedor",
+  selectedImages: "Imágenes seleccionadas",
+  commercialGoal: "Instrucción comercial",
+  tone: "Tono",
+};
+
+/**
+ * Traduce un `ZodError` de `aiProductStudioInputSchema` a un mensaje en
+ * español, con el nombre del campo afectado — nunca el mensaje crudo de Zod
+ * (que sale en inglés y sin contexto, ej. "String must contain at most 240
+ * character(s)"). Todas las reglas de este schema ya traen su propio mensaje
+ * en español (ver arriba); esto solo antepone qué campo es, y sirve de
+ * respaldo si algún día se agrega una regla sin mensaje propio.
+ */
+export function describeAIProductStudioInputError(error: z.ZodError): string {
+  const issue = error.issues[0];
+  if (!issue) return "Revisa los datos ingresados.";
+  const field = issue.path[0];
+  const label = typeof field === "string" ? AI_PRODUCT_STUDIO_INPUT_FIELD_LABELS[field] : undefined;
+  return label ? `${label}: ${issue.message}` : issue.message;
+}
 
 // ─── Salida del estudio (borrador) ────────────────────────────────────────────
 

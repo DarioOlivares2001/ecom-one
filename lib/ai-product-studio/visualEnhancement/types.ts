@@ -8,6 +8,15 @@
 export const AI_PRODUCT_STUDIO_MAX_IMAGES_PER_DRAFT = 3;
 
 /**
+ * Límite del prompt visual (editable a mano por el admin antes de generar) —
+ * mismo valor que validan `generate-image/route.ts` y `approve-image/route.ts`
+ * en servidor. Es "texto largo" a propósito (nunca comparte el límite corto
+ * de 240 de un campo secundario como un encabezado): un prompt de generación
+ * puede necesitar instrucciones detalladas de composición/contexto.
+ */
+export const AI_PRODUCT_STUDIO_MAX_PROMPT_LENGTH = 1200;
+
+/**
  * Nivel 3 del Estudio IA de Producto — "Mejora visual y persuasiva de la
  * ficha" / "Dirección visual de ficha". Vive enteramente dentro de
  * `/admin/productos/crear-con-ia`, DESPUÉS del borrador textual y ANTES de

@@ -12,7 +12,7 @@ import {
   type AIProductStudioInput,
   type DetectedFact,
 } from "./schema";
-import { filterSupplierLines, looksLikeGenericHeading, NAME_PLACEHOLDER, truncate } from "./textFilters";
+import { filterSupplierLines, looksLikeGenericHeading, NAME_PLACEHOLDER, truncate, truncateAtWordBoundary } from "./textFilters";
 import { slugify } from "./slugify";
 import { enforceAnchoredClaims, extractExplicitDimensions } from "./specClaims";
 import {
@@ -25,6 +25,24 @@ import { getAIProductStudioModel, getOpenAIApiKey, isAIProductStudioEnabled } fr
 const REQUEST_TIMEOUT_MS = 45_000;
 const MAX_SECTIONS = 8;
 const GALLERY_FALLBACK_NOTICE = "Se conservó tu selección de galería.";
+
+/**
+ * Límites del schema FINAL persistido (`lib/product/sections/types.ts`),
+ * repetidos acá como constantes con nombre para que `assembleDraft()` los
+ * use al recortar campos secundarios de forma segura (ver más abajo) — nunca
+ * un número mágico suelto. Los schemas `aiModel*` que le exigimos al modelo
+ * (justo debajo) usan un margen MAYOR a estos límites a propósito: así un
+ * campo secundario un poco más largo de lo ideal no tira abajo la
+ * generación completa (antes: 240 duro en varios campos, incluida la
+ * instrucción comercial del admin — bug reportado con los creativos de
+ * magnesio). Lo que sobre el límite persistido se recorta recién en
+ * `assembleDraft()`, nunca antes ni en el schema del modelo.
+ */
+const PERSISTED_HEADING_MAX = 80;
+const PERSISTED_ALT_MAX = 180;
+const PERSISTED_BENEFIT_TITLE_MAX = 60;
+const PERSISTED_BENEFIT_DESCRIPTION_MAX = 240;
+const PERSISTED_SINGLE_IMAGE_DESCRIPTION_MAX = 2000;
 
 /**
  * Interfaz mínima que necesitamos del cliente de OpenAI — permite inyectar
@@ -62,22 +80,24 @@ function buildImageRefs(selectedImages: string[]): { id: string; url: string }[]
 
 const aiModelBenefitItemSchema = z.object({
   icon: z.enum(BENEFIT_ICONS),
-  title: z.string().max(60),
-  description: z.string().max(240),
+  // Margen sobre el límite persistido (60) — se recorta a 60 en assembleDraft() si hace falta, nunca rechaza la generación completa.
+  title: z.string().max(100, "El título de un beneficio es demasiado largo."),
+  // Margen sobre el límite persistido (240) — mismo criterio (caso real: descripciones de beneficios de un suplemento con varios ingredientes).
+  description: z.string().max(360, "La descripción de un beneficio es demasiado larga."),
 });
 
 const aiModelSingleImageDataSchema = z.object({
-  heading: z.string().max(80),
-  description: z.string().max(2000),
+  heading: z.string().max(120, "El título de una sección es demasiado largo."),
+  description: z.string().max(PERSISTED_SINGLE_IMAGE_DESCRIPTION_MAX, "La descripción de una sección es demasiado larga."),
   imageId: z.string().nullable(),
-  alt: z.string().max(180),
+  alt: z.string().max(220, "El texto alternativo de una imagen es demasiado largo."),
 });
 
 const aiModelBenefitsDataSchema = z.object({
-  heading: z.string().max(80),
-  description: z.string().max(2000),
+  heading: z.string().max(120, "El título de la sección de beneficios es demasiado largo."),
+  description: z.string().max(PERSISTED_SINGLE_IMAGE_DESCRIPTION_MAX, "La descripción de la sección de beneficios es demasiado larga."),
   imageId: z.string().nullable(),
-  alt: z.string().max(180),
+  alt: z.string().max(220, "El texto alternativo de la imagen de beneficios es demasiado largo."),
   items: z.array(aiModelBenefitItemSchema).min(1).max(6),
 });
 
@@ -97,7 +117,11 @@ const aiModelSectionSchema = z.discriminatedUnion("type", [
  * bloques: el modelo solo conoce `imageId`, nunca una URL).
  */
 const aiModelDetectedFactSchema = z.object({
-  claim: z.string().max(240),
+  // "Datos técnicos detectados" nunca se recortan (ver assembleDraft()) —
+  // por eso este límite es generoso de entrada en vez de contar con un
+  // recorte posterior. 400 alcanza para un hecho detallado (ej. una lista de
+  // ingredientes de un suplemento) sin invitar a un párrafo entero.
+  claim: z.string().max(400, "Un hecho detectado del proveedor es demasiado largo."),
   source: z.enum(DETECTED_FACT_SOURCES),
 });
 
@@ -119,16 +143,19 @@ const aiModelImageMeasurementSchema = z.object({
 });
 
 const aiModelOutputSchema = z.object({
-  name: z.string().max(80),
-  category: z.string().max(60),
-  tags: z.array(z.string().max(30)).max(10),
-  descriptionHtml: z.string().max(4000),
+  name: z.string().max(80, "El nombre propuesto es demasiado largo."),
+  category: z.string().max(60, "La categoría propuesta es demasiado larga."),
+  tags: z.array(z.string().max(30, "Una etiqueta es demasiado larga.")).max(10),
+  descriptionHtml: z.string().max(4000, "La descripción del producto es demasiado larga."),
   productSections: z.array(aiModelSectionSchema).max(MAX_SECTIONS),
   galleryImageIds: z.array(z.string()).max(6),
   detectedFacts: z.array(aiModelDetectedFactSchema).max(30),
   imageMeasurements: z.array(aiModelImageMeasurementSchema).max(6),
-  claimsToAvoid: z.array(z.string().max(200)).max(20),
-  fieldsNeedingConfirmation: z.array(z.string().max(40)).max(10),
+  // Nunca se recorta después (son advertencias/afirmaciones a evitar, no
+  // contenido de la ficha) — se le da margen igual para no rechazar la
+  // generación completa por una advertencia un poco más larga de lo ideal.
+  claimsToAvoid: z.array(z.string().max(300, "Una afirmación a evitar es demasiado larga.")).max(20),
+  fieldsNeedingConfirmation: z.array(z.string().max(40, "Un nombre de campo por confirmar es demasiado largo.")).max(10),
 });
 type AIModelOutput = z.infer<typeof aiModelOutputSchema>;
 
@@ -466,6 +493,21 @@ function assembleDraft(
     return trimmed.length > 0 ? trimmed : undefined;
   }
 
+  /**
+   * Igual que `cleanOptionalText`, pero además recorta de forma segura
+   * (palabra completa + "…", ver `truncateAtWordBoundary`) al límite del
+   * schema FINAL persistido — así un campo SECUNDARIO (encabezado, `alt`,
+   * descripción de una tarjeta de beneficio) que el modelo devolvió más
+   * largo de lo ideal nunca tira abajo la generación completa. Solo se usa
+   * en campos secundarios: nunca en nombre/slug, datos comerciales, medidas
+   * ni hechos técnicos detectados (esos usan `cleanOptionalText` sin
+   * recorte, con su propio límite ya generoso en el schema del modelo).
+   */
+  function cleanOptionalTextTruncated(raw: string, maxLength: number): string | undefined {
+    const truncated = truncateAtWordBoundary(raw, maxLength);
+    return truncated.length > 0 ? truncated : undefined;
+  }
+
   let productSections: ProductSection[] = model.productSections.slice(0, MAX_SECTIONS).map((section, i): ProductSection => {
     const base = { id: `ai-${section.type}-${i}`, enabled: true as const, order: i };
     if (section.type === "benefits") {
@@ -473,11 +515,15 @@ function assembleDraft(
         ...base,
         type: "benefits",
         data: {
-          heading: cleanOptionalText(section.data.heading),
-          description: cleanOptionalText(section.data.description),
+          heading: cleanOptionalTextTruncated(section.data.heading, PERSISTED_HEADING_MAX),
+          description: cleanOptionalTextTruncated(section.data.description, PERSISTED_SINGLE_IMAGE_DESCRIPTION_MAX),
           image_url: resolveImageId(section.data.imageId),
-          alt: cleanOptionalText(section.data.alt),
-          items: section.data.items,
+          alt: cleanOptionalTextTruncated(section.data.alt, PERSISTED_ALT_MAX),
+          items: section.data.items.map((item) => ({
+            icon: item.icon,
+            title: truncateAtWordBoundary(item.title, PERSISTED_BENEFIT_TITLE_MAX),
+            description: truncateAtWordBoundary(item.description, PERSISTED_BENEFIT_DESCRIPTION_MAX),
+          })),
         },
       };
     }
@@ -485,10 +531,17 @@ function assembleDraft(
       ...base,
       type: section.type,
       data: {
-        heading: cleanOptionalText(section.data.heading),
-        description: cleanOptionalText(section.data.description),
+        heading: cleanOptionalTextTruncated(section.data.heading, PERSISTED_HEADING_MAX),
+        // Medidas es la única excepción: su descripción ES la dimensión real
+        // ("Las medidas indicadas... son: 17 cm, ..."). Regla dura: nunca se
+        // recorta contenido técnico/dimensiones, aunque el límite del modelo
+        // (2000) ya es tan generoso que en la práctica nunca hace falta cortar.
+        description:
+          section.type === "measurements"
+            ? cleanOptionalText(section.data.description)
+            : cleanOptionalTextTruncated(section.data.description, PERSISTED_SINGLE_IMAGE_DESCRIPTION_MAX),
         image_url: resolveImageId(section.data.imageId),
-        alt: cleanOptionalText(section.data.alt),
+        alt: cleanOptionalTextTruncated(section.data.alt, PERSISTED_ALT_MAX),
       },
     };
   });

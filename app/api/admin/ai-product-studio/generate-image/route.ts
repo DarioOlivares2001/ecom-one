@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getAdminSessionFromCookies } from "@/lib/admin/session";
 import { extractR2KeyFromPublicUrl } from "@/lib/storage/r2";
-import { AI_PRODUCT_STUDIO_MAX_IMAGES_PER_DRAFT } from "@/lib/ai-product-studio/visualEnhancement/types";
+import {
+  AI_PRODUCT_STUDIO_MAX_IMAGES_PER_DRAFT,
+  AI_PRODUCT_STUDIO_MAX_PROMPT_LENGTH,
+} from "@/lib/ai-product-studio/visualEnhancement/types";
 import {
   generateProductImage,
   type GenerateProductImageErrorCode,
@@ -13,8 +16,12 @@ export const runtime = "nodejs";
 const PRODUCT_IMAGE_PREFIX = "products/";
 
 const bodySchema = z.object({
-  prompt: z.string().trim().min(1, "El prompt no puede estar vacío.").max(1000),
-  referenceImageUrl: z.string().url(),
+  prompt: z
+    .string()
+    .trim()
+    .min(1, "El prompt no puede estar vacío.")
+    .max(AI_PRODUCT_STUDIO_MAX_PROMPT_LENGTH, `El prompt no puede superar los ${AI_PRODUCT_STUDIO_MAX_PROMPT_LENGTH} caracteres.`),
+  referenceImageUrl: z.string().url("La foto de referencia debe ser una URL válida."),
   /** Cuántas imágenes IA ya se generaron en esta ficha (contador llevado por el cliente) — defensa adicional al límite ya aplicado en la UI. */
   alreadyGeneratedCount: z.number().int().min(0).max(1000),
 });

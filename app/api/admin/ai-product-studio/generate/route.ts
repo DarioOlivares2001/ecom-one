@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminSessionFromCookies } from "@/lib/admin/session";
 import { extractR2KeyFromPublicUrl } from "@/lib/storage/r2";
-import { aiProductStudioInputSchema } from "@/lib/ai-product-studio/schema";
+import { aiProductStudioInputSchema, describeAIProductStudioInputError } from "@/lib/ai-product-studio/schema";
 import { generateAIDraft, type GenerateAIDraftErrorCode } from "@/lib/ai-product-studio/generateAIDraft";
 
 export const runtime = "nodejs";
@@ -33,10 +33,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => null);
     const parsedInput = aiProductStudioInputSchema.safeParse(body);
     if (!parsedInput.success) {
-      return NextResponse.json(
-        { error: parsedInput.error.issues[0]?.message ?? "Datos de entrada inválidos." },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: describeAIProductStudioInputError(parsedInput.error) }, { status: 400 });
     }
     const input = parsedInput.data;
 

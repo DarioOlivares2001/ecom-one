@@ -30,28 +30,33 @@ export interface VisualDirectionOpenAIClient {
   };
 }
 
+// Estos textos son editoriales (razones, objetivos, prompts) — ninguno se
+// vuelve a validar contra un schema más estricto después (a diferencia de
+// benefits/detectedFacts en generateAIDraft.ts), así que acá basta con darles
+// un límite generoso de entrada; no necesitan un recorte posterior.
 const aiModelImageClassificationSchema = z.object({
   imageId: z.string(),
   category: z.enum(IMAGE_CATEGORIES),
-  reason: z.string().max(200),
+  reason: z.string().max(300, "La razón de clasificación de una imagen es demasiado larga."),
 });
 
 const aiModelSectionAssignmentSchema = z.object({
   /** 0 = galería/portada (se resuelve de forma determinista, ver más abajo); 1..N = productSections en orden. */
   sectionIndex: z.number().int(),
   imageId: z.string().nullable(),
-  assignmentReason: z.string().max(200),
+  assignmentReason: z.string().max(300, "La razón de asignación de una sección es demasiado larga."),
   needsGeneration: z.boolean(),
   generationIntent: z.enum(GENERATION_INTENTS).nullable(),
-  generationPrompt: z.string().max(600),
-  generationPersuasiveGoal: z.string().max(200),
-  generationRisks: z.array(z.string().max(200)).max(6),
+  // "Prompt visual interno": puede necesitar instrucciones detalladas — nunca comparte el límite corto de los campos editoriales cortos.
+  generationPrompt: z.string().max(1200, "El prompt de generación es demasiado largo."),
+  generationPersuasiveGoal: z.string().max(300, "El objetivo persuasivo de una propuesta es demasiado largo."),
+  generationRisks: z.array(z.string().max(300, "Un riesgo listado es demasiado largo.")).max(6),
 });
 
 const aiModelVisualDirectionOutputSchema = z.object({
   classifications: z.array(aiModelImageClassificationSchema).max(20),
   coverImageId: z.string().nullable(),
-  coverReason: z.string().max(200),
+  coverReason: z.string().max(300, "La razón de portada es demasiado larga."),
   /** Orden propuesto para la galería pública — el servidor igual filtra categorías excluidas. */
   galleryOrder: z.array(z.string()).max(20),
   sections: z.array(aiModelSectionAssignmentSchema).max(MAX_SECTIONS_FOR_PLAN),

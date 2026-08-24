@@ -26,6 +26,8 @@ import {
   AI_PRODUCT_STUDIO_TONE_LABELS,
   aiProductDraftSchema,
   aiProductStudioInputSchema,
+  describeAIProductStudioInputError,
+  MAX_COMMERCIAL_GOAL_LENGTH,
   type AIProductDraft,
   type AIProductStudioTone,
 } from "@/lib/ai-product-studio/schema";
@@ -280,7 +282,7 @@ export function AIProductWizard() {
       tone,
     });
     if (!parsedInput.success) {
-      setGenerateError(parsedInput.error.issues[0]?.message ?? "Revisa los datos ingresados.");
+      setGenerateError(describeAIProductStudioInputError(parsedInput.error));
       return;
     }
 
@@ -459,12 +461,18 @@ export function AIProductWizard() {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-zinc-700">Instrucción comercial (opcional)</label>
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-zinc-700">Instrucción comercial (opcional)</label>
+                <span className="text-xs text-zinc-400">
+                  {commercialGoal.length}/{MAX_COMMERCIAL_GOAL_LENGTH}
+                </span>
+              </div>
               <input
                 className={inputCls}
                 placeholder='Ej: "enfócalo en espacios pequeños y uso práctico"'
                 value={commercialGoal}
                 onChange={(e) => setCommercialGoal(e.target.value)}
+                maxLength={MAX_COMMERCIAL_GOAL_LENGTH}
               />
             </div>
 

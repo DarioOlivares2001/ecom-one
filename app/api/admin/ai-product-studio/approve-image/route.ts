@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getAdminSessionFromCookies } from "@/lib/admin/session";
 import { extractR2KeyFromPublicUrl } from "@/lib/storage/r2";
 import { uploadApprovedAIImage } from "@/lib/ai-product-studio/visualEnhancement/uploadApprovedImage";
+import { AI_PRODUCT_STUDIO_MAX_PROMPT_LENGTH } from "@/lib/ai-product-studio/visualEnhancement/types";
 
 export const runtime = "nodejs";
 
@@ -10,11 +11,17 @@ const PRODUCT_IMAGE_PREFIX = "products/";
 const DATA_URL_PATTERN = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/;
 
 const bodySchema = z.object({
-  dataUrl: z.string().min(1),
-  sectionId: z.string().min(1),
-  sectionType: z.string().min(1),
-  prompt: z.string().min(1).max(1000),
-  referenceImageUrl: z.string().url(),
+  dataUrl: z.string().min(1, "Falta la imagen generada."),
+  sectionId: z.string().min(1, "Falta el id de la sección."),
+  sectionType: z.string().min(1, "Falta el tipo de sección."),
+  // Mismo límite que generate-image/route.ts — este prompt es el mismo que ya
+  // se usó para generar (se reenvía tal cual para guardarlo como metadata),
+  // así que nunca puede ser MÁS estricto o una generación válida no se podría aprobar.
+  prompt: z
+    .string()
+    .min(1, "El prompt no puede estar vacío.")
+    .max(AI_PRODUCT_STUDIO_MAX_PROMPT_LENGTH, `El prompt no puede superar los ${AI_PRODUCT_STUDIO_MAX_PROMPT_LENGTH} caracteres.`),
+  referenceImageUrl: z.string().url("La foto de referencia debe ser una URL válida."),
 });
 
 /**

@@ -18,7 +18,10 @@ import { clsx } from "clsx";
 import { Button } from "@/components/ui/Button";
 import { toast } from "@/components/ui/Toast";
 import type { AIProductDraft } from "@/lib/ai-product-studio/schema";
-import { AI_PRODUCT_STUDIO_MAX_IMAGES_PER_DRAFT } from "@/lib/ai-product-studio/visualEnhancement/types";
+import {
+  AI_PRODUCT_STUDIO_MAX_IMAGES_PER_DRAFT,
+  AI_PRODUCT_STUDIO_MAX_PROMPT_LENGTH,
+} from "@/lib/ai-product-studio/visualEnhancement/types";
 import {
   GALLERY_EXCLUDED_CATEGORIES,
   GENERATION_INTENT_LABELS,
@@ -465,12 +468,16 @@ export function VisualDirectionPanel({
                           )}
 
                           <label className="flex flex-col gap-1">
-                            <span className="text-xs font-medium text-zinc-700">Prompt (editable)</span>
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-medium text-zinc-700">Prompt (editable)</span>
+                              <span className="text-[10px] text-zinc-400">{(prompts[section.sectionId] ?? "").length}/{AI_PRODUCT_STUDIO_MAX_PROMPT_LENGTH}</span>
+                            </div>
                             <textarea
                               className="min-h-[64px] w-full resize-y rounded-md border border-zinc-300 bg-white px-3 py-2 text-xs text-zinc-900 outline-none focus:ring-2 focus:ring-zinc-900"
                               value={prompts[section.sectionId] ?? ""}
                               onChange={(e) => setPrompts((prev) => ({ ...prev, [section.sectionId]: e.target.value }))}
                               disabled={generatingId === section.sectionId}
+                              maxLength={AI_PRODUCT_STUDIO_MAX_PROMPT_LENGTH}
                             />
                           </label>
 

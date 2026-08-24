@@ -16,6 +16,35 @@ export function truncate(text: string, maxLength: number): string {
   return `${trimmed.slice(0, maxLength - 1).trimEnd()}…`;
 }
 
+/**
+ * Igual que `truncate`, pero corta en el último espacio disponible antes del
+ * límite en vez de partir una palabra a la mitad — usado para recortar de
+ * forma segura campos SECUNDARIOS del borrador (encabezados, `alt`,
+ * descripciones de tarjetas de beneficios) que el modelo devolvió más largos
+ * de lo que el schema final persistido acepta, sin rechazar la generación
+ * completa por eso. Nunca se usa para datos comerciales, nombre, slug,
+ * medidas ni hechos técnicos detectados — esos deben tener un límite lo
+ * bastante generoso como para no necesitar recortarse jamás (ver
+ * `generateAIDraft.ts`).
+ *
+ * Si no hay ningún espacio razonable cerca del límite (ej. una sola palabra
+ * larguísima), cae de vuelta a un corte duro — nunca deja el texto sin
+ * recortar ni revienta.
+ */
+export function truncateAtWordBoundary(text: string, maxLength: number): string {
+  const trimmed = text.trim();
+  if (trimmed.length <= maxLength) return trimmed;
+
+  const budget = maxLength - 1; // 1 carácter reservado para "…"
+  const hardCut = trimmed.slice(0, budget);
+  const lastSpace = hardCut.lastIndexOf(" ");
+  // Solo se usa el corte por palabra si no pierde demasiado texto (>60% del
+  // presupuesto) — si la última palabra "completa" queda muy atrás, un corte
+  // duro es más útil que dejar el texto casi vacío.
+  const cut = lastSpace > budget * 0.4 ? hardCut.slice(0, lastSpace) : hardCut;
+  return `${cut.trimEnd()}…`;
+}
+
 const BULLET_PREFIX_RE = /^[-*•✓✔▪●○·]\s*/;
 
 export function splitLines(raw: string): string[] {
