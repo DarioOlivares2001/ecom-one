@@ -4,7 +4,6 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { TrustBadges } from "@/components/store/TrustBadges";
-import { ProductTieredDiscount } from "@/components/store/ProductTieredDiscount";
 import { normalizeProductCategory } from "@/lib/product/categories";
 import { formatPrice } from "@/lib/utils/format";
 import { getActivePackLabel } from "@/lib/product/sections/quantityPacks";
@@ -19,12 +18,10 @@ interface PurchasePanelProps {
   variants: ProductVariantState;
   avgRating: number | null;
   reviewCount: number;
-  /** Tipografía/espaciado más compactos — usado por el tema Técnico. */
+  /** Tipografía/espaciado más compactos — disponible para futuros temas. */
   density?: "default" | "compact";
   /** Mensaje de urgencia (stock real, nunca inventado) — se puede ocultar para un tono más editorial. */
   showUrgency?: boolean;
-  /** Bloque de descuento por cantidad (lib/discounts) — se muestra completo en el tema Oferta. */
-  showTieredDiscount?: boolean;
 }
 
 export function PurchasePanel({
@@ -35,7 +32,6 @@ export function PurchasePanel({
   reviewCount,
   density = "default",
   showUrgency = true,
-  showTieredDiscount = false,
 }: PurchasePanelProps) {
   const compact = density === "compact";
   const category = normalizeProductCategory(product.category);
@@ -106,17 +102,6 @@ export function PurchasePanel({
           )}
         </div>
       </div>
-
-      {showTieredDiscount && (
-        <ProductTieredDiscount
-          unitPrice={commercial.displayPrice}
-          quantity={commercial.qty}
-          discount_enabled={product.discount_enabled}
-          discount_max_percent={product.discount_max_percent}
-          discount_steps={product.discount_steps}
-          discount_label={product.discount_label}
-        />
-      )}
 
       {/* Variants */}
       {variants.hasRealVariants ? (

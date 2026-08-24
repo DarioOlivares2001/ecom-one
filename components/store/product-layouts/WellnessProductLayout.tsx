@@ -9,12 +9,14 @@ import type { ProductLayoutProps } from "./types";
 /**
  * Tema "Bienestar y suplementos" — foco editorial y premium: más aire entre
  * bloques, sin banner de urgencia, y los bloques del producto priorizan
- * beneficios → uso diario/presentación → versatilidad antes que el resto
- * (ver sortSectionsForTheme — nunca reordena el contenido dentro de un
- * bloque, solo el orden entre tipos de bloque). "También te puede
- * interesar" ya llega vacío desde el servidor si no hay nada realmente afín
- * (ver page.tsx: allowGenericFallback=false para este tema), así que acá
- * simplemente no se renderiza — RelatedProductsSection ya maneja ese caso.
+ * beneficios → fórmula/uso → confianza (testimonios) antes que el resto (ver
+ * sortSectionsForTheme — nunca reordena el contenido dentro de un bloque,
+ * solo el orden entre tipos de bloque; nunca inventa un claim médico,
+ * ingrediente ni certificación — solo prioriza visualmente lo que el admin
+ * ya cargó). "También te puede interesar" ya llega vacío desde el servidor
+ * si no hay nada realmente afín (ver page.tsx: allowGenericFallback=false
+ * para este tema), así que acá simplemente no se renderiza —
+ * RelatedProductsSection ya maneja ese caso.
  */
 export function WellnessProductLayout({
   product,
@@ -46,7 +48,7 @@ export function WellnessProductLayout({
         product={product}
         hasModularSections={hasModularSections}
         hasDescription={hasDescription}
-        sortSections={(sections) => sortSectionsForTheme(sections, "wellness")}
+        sortSections={(sections) => sortSectionsForTheme(sections, "wellness-supplements")}
         className="mt-16 sm:mt-24"
         commercial={{ qty: commercial.qty, setQty: commercial.setQty }}
       />

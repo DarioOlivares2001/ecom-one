@@ -1,8 +1,9 @@
 /**
  * Prueba pura (sin DB, sin red, sin tocar productos reales) del sistema de
  * temas estructurales: resolución/fallback de `storefront_theme`
- * (lib/store-settings/storefrontThemes.ts) y la estrategia de orden de
- * bloques por tema (lib/product/sections/sortSectionsForTheme.ts).
+ * (lib/store-settings/storefrontThemes.ts) — incluidos los alias legados de
+ * la iteración anterior (4 temas) hacia los 2 vigentes — y la estrategia de
+ * orden de bloques por tema (lib/product/sections/sortSectionsForTheme.ts).
  *
  * Uso: npx tsx scripts/verify-storefront-themes.ts
  */
@@ -30,27 +31,55 @@ console.log("[1] resolveStorefrontTheme: valores válidos pasan tal cual");
   for (const id of STOREFRONT_THEME_IDS) {
     assert(resolveStorefrontTheme(id) === id, `"${id}" se resuelve a sí mismo`);
   }
+  assert(STOREFRONT_THEME_IDS.length === 2, `hay exactamente 2 temas estructurales (obtuvo ${STOREFRONT_THEME_IDS.length})`);
 }
 
-console.log("\n[2] resolveStorefrontTheme: fallback seguro para valores inválidos/legados/vacíos");
+console.log("\n[2] resolveStorefrontTheme: fallback seguro para valores inválidos/vacíos");
 {
-  assert(resolveStorefrontTheme(null) === DEFAULT_STOREFRONT_THEME, "null -> conversion");
-  assert(resolveStorefrontTheme(undefined) === DEFAULT_STOREFRONT_THEME, "undefined -> conversion");
-  assert(resolveStorefrontTheme("") === DEFAULT_STOREFRONT_THEME, "string vacío -> conversion");
-  assert(resolveStorefrontTheme("premium_dark") === DEFAULT_STOREFRONT_THEME, "un preset visual por error -> conversion (no son el mismo enum)");
-  assert(resolveStorefrontTheme("legacy_theme_borrado") === DEFAULT_STOREFRONT_THEME, "valor legado desconocido -> conversion");
-  assert(DEFAULT_STOREFRONT_THEME === "conversion", "el default de resolveStorefrontTheme coincide con el default de la columna");
+  assert(resolveStorefrontTheme(null) === DEFAULT_STOREFRONT_THEME, "null -> conversion-general");
+  assert(resolveStorefrontTheme(undefined) === DEFAULT_STOREFRONT_THEME, "undefined -> conversion-general");
+  assert(resolveStorefrontTheme("") === DEFAULT_STOREFRONT_THEME, "string vacío -> conversion-general");
+  assert(resolveStorefrontTheme("premium_dark") === DEFAULT_STOREFRONT_THEME, "un preset visual por error -> conversion-general (no son el mismo enum)");
+  assert(resolveStorefrontTheme("algo-inventado") === DEFAULT_STOREFRONT_THEME, "valor desconocido -> conversion-general");
+  assert(DEFAULT_STOREFRONT_THEME === "conversion-general", "el default de resolveStorefrontTheme coincide con el default de la columna");
 }
 
-console.log("\n[3] Registro STOREFRONT_THEME_LIST: 4 temas, cada uno con nombre/descripción/nicho/estructura no vacíos");
+console.log("\n[3] resolveStorefrontTheme: alias legados de la iteración anterior (4 temas) siguen funcionando sin migrar datos");
 {
-  assert(STOREFRONT_THEME_LIST.length === 4, `hay 4 temas (obtuvo ${STOREFRONT_THEME_LIST.length})`);
+  assert(
+    resolveStorefrontTheme("conversion") === "conversion-general",
+    "id legado 'conversion' -> 'conversion-general' (instalaciones existentes con este valor guardado)"
+  );
+  assert(
+    resolveStorefrontTheme("wellness") === "wellness-supplements",
+    "id legado 'wellness' -> 'wellness-supplements'"
+  );
+  assert(
+    resolveStorefrontTheme("technical") === DEFAULT_STOREFRONT_THEME,
+    "id legado 'technical' (tema eliminado, nunca existió como opción final) -> default, no revienta"
+  );
+  assert(
+    resolveStorefrontTheme("offer") === DEFAULT_STOREFRONT_THEME,
+    "id legado 'offer' (tema eliminado) -> default, no revienta"
+  );
+}
+
+console.log("\n[4] Registro STOREFRONT_THEME_LIST: 2 temas, cada uno con nombre/descripción/nicho/estructura no vacíos");
+{
+  assert(STOREFRONT_THEME_LIST.length === 2, `hay 2 temas (obtuvo ${STOREFRONT_THEME_LIST.length})`);
   for (const theme of STOREFRONT_THEME_LIST) {
     assert(theme.name.trim().length > 0, `${theme.id}: tiene nombre`);
     assert(theme.description.trim().length > 0, `${theme.id}: tiene descripción`);
     assert(theme.recommendedFor.trim().length > 0, `${theme.id}: tiene nicho recomendado`);
     assert(theme.structure.length > 0, `${theme.id}: tiene estructura definida`);
   }
+  const wellness = STOREFRONT_THEME_LIST.find((t) => t.id === "wellness-supplements")!;
+  assert(
+    wellness.structure.some((s) => /home/i.test(s)) &&
+      wellness.structure.some((s) => /cat[aá]logo/i.test(s)) &&
+      wellness.structure.some((s) => /ficha/i.test(s)),
+    "la estructura documentada de Bienestar cubre Home, Catálogo y Ficha (no solo la ficha de producto)"
+  );
 }
 
 // ─── sortSectionsForTheme ────────────────────────────────────────────────────
@@ -113,34 +142,19 @@ function makeSection(type: ProductSection["type"], order: number): ProductSectio
   }
 }
 
-console.log("\n[4] sortSectionsForTheme('wellness'): beneficios -> uso -> versatilidad -> resto");
+console.log("\n[5] sortSectionsForTheme('wellness-supplements'): beneficios -> uso -> confianza (testimonios) -> resto");
 {
   const faq = makeSection("faq", 0);
-  const versatility = makeSection("versatility", 1);
+  const testimonials = makeSection("testimonials", 1);
   const usage = makeSection("usage", 2);
   const benefits = makeSection("benefits", 3);
-  const original = [faq, versatility, usage, benefits];
-  const sorted = sortSectionsForTheme(original, "wellness").map((s) => s.type);
+  const original = [faq, testimonials, usage, benefits];
+  const sorted = sortSectionsForTheme(original, "wellness-supplements").map((s) => s.type);
   assert(
-    JSON.stringify(sorted) === JSON.stringify(["benefits", "usage", "versatility", "faq"]),
-    `orden esperado: beneficios, uso, versatilidad, resto (obtuvo ${JSON.stringify(sorted)})`
+    JSON.stringify(sorted) === JSON.stringify(["benefits", "usage", "testimonials", "faq"]),
+    `orden esperado: beneficios, uso, confianza, resto (obtuvo ${JSON.stringify(sorted)})`
   );
   assert(original[0] === faq && original[0].order === 0, "el array original no se muta");
-}
-
-console.log("\n[5] sortSectionsForTheme('technical'): medidas -> versatilidad -> uso -> resto");
-{
-  const testimonials = makeSection("testimonials", 0);
-  const usage = makeSection("usage", 1);
-  const measurements = makeSection("measurements", 2);
-  const versatility = makeSection("versatility", 3);
-  const sorted = sortSectionsForTheme([testimonials, usage, measurements, versatility], "technical").map(
-    (s) => s.type
-  );
-  assert(
-    JSON.stringify(sorted) === JSON.stringify(["measurements", "versatility", "usage", "testimonials"]),
-    `orden esperado: medidas, versatilidad, uso, resto (obtuvo ${JSON.stringify(sorted)})`
-  );
 }
 
 console.log("\n[6] sortSectionsForTheme: dentro de un mismo grupo de prioridad se preserva el orden original (estable)");
@@ -148,28 +162,29 @@ console.log("\n[6] sortSectionsForTheme: dentro de un mismo grupo de prioridad s
   const benefitsA = makeSection("benefits", 0);
   const benefitsB = makeSection("benefits", 1);
   const usage = makeSection("usage", 2);
-  const sorted = sortSectionsForTheme([usage, benefitsB, benefitsA], "wellness");
-  assert(sorted[0].id === benefitsB.id && sorted[1].id === benefitsA.id, "los dos 'benefits' mantienen su orden relativo original (B antes que A, como venían)");
+  const sorted = sortSectionsForTheme([usage, benefitsB, benefitsA], "wellness-supplements");
+  assert(
+    sorted[0].id === benefitsB.id && sorted[1].id === benefitsA.id,
+    "los dos 'benefits' mantienen su orden relativo original (B antes que A, como venían)"
+  );
   assert(sorted[2].id === usage.id, "usage queda al final de su grupo");
 }
 
-console.log("\n[7] sortSectionsForTheme: 'conversion' y 'offer' no reordenan — se respeta el order del admin");
+console.log("\n[7] sortSectionsForTheme: 'conversion-general' no reordena — se respeta el order del admin");
 {
   const versatility = makeSection("versatility", 0);
   const benefits = makeSection("benefits", 1);
   const faq = makeSection("faq", 2);
   const original = [versatility, benefits, faq];
-  const sortedConversion = sortSectionsForTheme(original, "conversion");
-  const sortedOffer = sortSectionsForTheme(original, "offer");
-  assert(sortedConversion === original, "conversion: devuelve la misma referencia (passthrough, sin reordenar)");
-  assert(sortedOffer === original, "offer: devuelve la misma referencia (passthrough, sin reordenar)");
+  const sorted = sortSectionsForTheme(original, "conversion-general");
+  assert(sorted === original, "conversion-general: devuelve la misma referencia (passthrough, sin reordenar)");
 }
 
 console.log("\n[8] sortSectionsForTheme: nunca altera el contenido de una sección, solo su posición");
 {
   const benefits = makeSection("benefits", 0);
   const usage = makeSection("usage", 1);
-  const sorted = sortSectionsForTheme([usage, benefits], "wellness");
+  const sorted = sortSectionsForTheme([usage, benefits], "wellness-supplements");
   const sortedBenefits = sorted.find((s) => s.type === "benefits");
   assert(
     sortedBenefits === benefits,

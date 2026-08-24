@@ -3,14 +3,10 @@ import type { StorefrontThemeId } from "@/lib/store-settings/storefrontThemes";
 import type { ProductLayoutProps } from "./types";
 import { ConversionProductLayout } from "./ConversionProductLayout";
 import { WellnessProductLayout } from "./WellnessProductLayout";
-import { TechnicalProductLayout } from "./TechnicalProductLayout";
-import { OfferProductLayout } from "./OfferProductLayout";
 
 const LAYOUTS: Record<StorefrontThemeId, ComponentType<ProductLayoutProps>> = {
-  conversion: ConversionProductLayout,
-  wellness: WellnessProductLayout,
-  technical: TechnicalProductLayout,
-  offer: OfferProductLayout,
+  "conversion-general": ConversionProductLayout,
+  "wellness-supplements": WellnessProductLayout,
 };
 
 interface ProductLayoutRendererProps extends ProductLayoutProps {
@@ -20,7 +16,7 @@ interface ProductLayoutRendererProps extends ProductLayoutProps {
 /**
  * Único punto de decisión "qué tema estructural renderizar". El wrapper
  * `<main>` (ancho máximo + espacio inferior para la barra sticky de compra)
- * se aplica acá, igual para los 4 temas, para que ningún tema pueda romper
+ * se aplica acá, igual para los 2 temas, para que ningún tema pueda romper
  * accidentalmente el despeje que necesita `StickyAddToCart`.
  */
 export function ProductLayoutRenderer({ theme, ...layoutProps }: ProductLayoutRendererProps) {

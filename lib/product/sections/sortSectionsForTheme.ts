@@ -4,15 +4,15 @@ import type { StorefrontThemeId } from "@/lib/store-settings/storefrontThemes";
 /**
  * Prioridad de TIPOS de bloque por tema estructural — nunca reordena el
  * contenido dentro de un bloque ni altera su texto, solo decide qué grupo de
- * tipos aparece antes cuando el tema lo pide explícitamente. Los temas sin
- * entrada acá (`conversion`, `offer`) no reordenan: se respeta el `order`
- * que el admin ya definió para esa ficha.
+ * tipos aparece antes cuando el tema lo pide explícitamente. `conversion-general`
+ * no tiene entrada acá: no reordena, se respeta el `order` que el admin ya
+ * definió para esa ficha.
  */
 const THEME_SECTION_TYPE_PRIORITY: Partial<Record<StorefrontThemeId, ProductSectionType[]>> = {
-  // Bienestar: beneficios primero, luego uso diario/presentación, luego versatilidad.
-  wellness: ["benefits", "usage", "versatility"],
-  // Técnico: medidas, versatilidad y uso primero (lo que el pedido pide priorizar).
-  technical: ["measurements", "versatility", "usage"],
+  // Bienestar: beneficios → fórmula/uso (no hay tipo dedicado a "fórmula",
+  // así que cae naturalmente donde el admin lo haya puesto) → confianza
+  // (testimonios). El resto de bloques conserva su orden relativo original.
+  "wellness-supplements": ["benefits", "usage", "testimonials"],
 };
 
 /**

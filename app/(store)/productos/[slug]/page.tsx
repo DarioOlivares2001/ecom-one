@@ -92,7 +92,7 @@ export default async function ProductPage({ params }: Props) {
   // prefiere ocultar la sección antes que mostrar algo no afín. Explícito
   // acá por tema, nunca implícito (ver PickUpsellOptions).
   const upsellSuggestions = pickProductUpsellSuggestions(product, upsellCandidates, 4, {
-    allowGenericFallback: storefrontTheme !== "wellness",
+    allowGenericFallback: storefrontTheme !== "wellness-supplements",
   });
 
   return (

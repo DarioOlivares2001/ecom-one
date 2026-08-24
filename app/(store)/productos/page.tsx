@@ -4,6 +4,7 @@ import { ProductsClient } from "./ProductsClient";
 import type { Product } from "@/lib/db/types";
 import { listActiveProducts } from "@/lib/db/repositories";
 import { toPublicProducts } from "@/lib/product/toPublicProduct";
+import { getStoreSettings } from "@/lib/store-settings/getStoreSettings";
 
 export const metadata: Metadata = {
   title: "Productos",
@@ -42,11 +43,16 @@ async function getProducts(): Promise<Product[]> {
 
 export default async function ProductosPage() {
   const renderStart = performance.now();
-  const products = await getProducts();
+  const [products, settings] = await Promise.all([getProducts(), getStoreSettings()]);
   if (perfEnabled()) {
     const totalMs = performance.now() - renderStart;
     console.log(`${PERF_PREFIX} total server ms:`, Math.round(totalMs));
   }
 
-  return <ProductsClient initialProducts={toPublicProducts(products)} />;
+  return (
+    <ProductsClient
+      initialProducts={toPublicProducts(products)}
+      storefrontTheme={settings.storefront_theme}
+    />
+  );
 }

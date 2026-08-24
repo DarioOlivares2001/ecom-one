@@ -6,7 +6,7 @@ import { RelatedProductsSection } from "./shared/RelatedProductsSection";
 import type { ProductLayoutProps } from "./types";
 
 /**
- * Tema "Conversión directa" — layout base (el mismo que ya existía antes de
+ * Tema "Conversión general" — layout base (el mismo que ya existía antes de
  * separar temas estructurales). Precio, oferta, CTA y compra rápida por
  * delante; bloques del producto en el orden que el admin ya definió.
  */

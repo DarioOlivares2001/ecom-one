@@ -95,7 +95,7 @@ export const DEFAULT_STORE_SETTINGS: StoreSettingsView = {
   text_muted_color: "#6B7280",
   border_color: "#E5E7EB",
   theme_preset: "custom",
-  storefront_theme: "conversion",
+  storefront_theme: "conversion-general",
   branding_mode: "text",
   logo_size_desktop: 32,
   logo_size_mobile: 28,
