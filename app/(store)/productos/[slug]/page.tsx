@@ -83,7 +83,7 @@ export default async function ProductPage({ params }: Props) {
     getProductVariants(product.id),
     getUpsellCandidates(product.id),
   ]);
-  const upsellSuggestions = pickProductUpsellSuggestions(product, upsellCandidates, 6);
+  const upsellSuggestions = pickProductUpsellSuggestions(product, upsellCandidates, 4);
 
   return (
     <ProductClient

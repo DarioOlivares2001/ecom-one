@@ -195,7 +195,7 @@ export function StickyAddToCart({
                   </div>
                 )}
                 {offerPercent > 0 && !needsVariantPick && (
-                  <span className="pointer-events-none absolute -left-1 -top-1 inline-flex h-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[9px] font-extrabold leading-none text-white shadow-sm">
+                  <span className="pointer-events-none absolute -left-1 -top-1 inline-flex h-4 items-center justify-center rounded-full bg-[var(--color-badge)] px-1 text-[9px] font-extrabold leading-none text-white shadow-sm">
                     -{offerPercent}%
                   </span>
                 )}

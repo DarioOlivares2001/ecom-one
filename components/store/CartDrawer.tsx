@@ -380,7 +380,7 @@ export function CartDrawer({
                                 {formatPrice(visual.offerPrice)}
                               </span>
                               {!isOfferExpired && visual.discountPercent > 0 && (
-                                <span className="rounded-full bg-rose-600 px-1.5 py-0.5 text-[10px] font-extrabold text-white">
+                                <span className="rounded-full bg-[var(--color-badge)] px-1.5 py-0.5 text-[10px] font-extrabold text-white">
                                   -{visual.discountPercent}% OFF
                                 </span>
                               )}
@@ -625,7 +625,7 @@ export function CartDrawer({
                                   {formatPrice(visual.offerPrice)}
                                 </span>
                                 {!isOfferExpired && visual.discountPercent > 0 && (
-                                  <span className="rounded-full bg-rose-600 px-1.5 py-0.5 text-[10px] font-extrabold text-white">
+                                  <span className="rounded-full bg-[var(--color-badge)] px-1.5 py-0.5 text-[10px] font-extrabold text-white">
                                     -{visual.discountPercent}% OFF
                                   </span>
                                 )}

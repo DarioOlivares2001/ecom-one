@@ -21,56 +21,84 @@ function safeUpsellImage(url: string): string {
 }
 
 /**
- * Sugiere productos relacionados: mismos categoría primero (señal real del
- * catálogo, no palabras clave fijas), luego los más baratos.
+ * Normaliza texto de catálogo (categoría, tags) para comparar de forma
+ * tolerante a mayúsculas, espacios y acentos: "Aceites  " === "aceites" ===
+ * "ACEITES" === "aceités" (variación simple de tildes).
+ */
+export function normalizeCatalogText(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(new RegExp("[\\u0300-\\u036f]", "g"), "");
+}
+
+function byCreatedAtDesc(a: Product, b: Product): number {
+  return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+}
+
+/**
+ * Sugiere productos relacionados en orden de relevancia real: misma
+ * categoría primero, luego productos que comparten al menos un tag, y solo
+ * si aún falta completar el cupo se usa cualquier otro producto activo como
+ * relleno. Dentro de cada grupo, los más recientes van primero.
  */
 export function pickProductUpsellSuggestions(
   currentProduct: Product,
   products: Product[],
-  max = 2
+  max = 4
 ): ProductUpsellSuggestion[] {
-  const currentCategory = (currentProduct.category ?? "").trim().toLowerCase();
+  const currentCategory = normalizeCatalogText(currentProduct.category ?? "");
+  const currentTags = new Set((currentProduct.tags ?? []).map(normalizeCatalogText).filter(Boolean));
 
-  // Sugerencias de productos relacionados (sin oferta): activo, con stock,
-  // distinto al actual y sin variantes (no se pueden agregar en una sola unidad).
+  // Activo, no eliminado, con stock, distinto al actual y sin variantes (no
+  // se pueden agregar directo con el botón "Agregar" de la tarjeta).
   const pool = products.filter(
     (p) =>
       p.active &&
+      p.deleted_at === null &&
       p.stock > 0 &&
       p.id !== currentProduct.id &&
       !p.has_variants
   );
 
-  const scored = pool
-    .map((p) => {
-      const sameCategoryScore =
-        currentCategory && (p.category ?? "").trim().toLowerCase() === currentCategory ? 5 : 0;
-      const cheapScore = p.price <= 12000 ? 2 : p.price <= 25000 ? 1 : 0;
-      return { p, score: sameCategoryScore + cheapScore };
-    })
-    .sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-      return a.p.price - b.p.price;
-    });
+  const sameCategory: Product[] = [];
+  const sharesTag: Product[] = [];
+  const rest: Product[] = [];
 
-  const out: ProductUpsellSuggestion[] = [];
-  for (const { p } of scored) {
-    if (out.length >= max) break;
-    // Sin oferta: se sugiere y se agrega siempre a precio de lista.
-    out.push({
-      id: p.id,
-      slug: p.slug,
-      name: p.name,
-      image: safeUpsellImage(p.images?.[0] ?? ""),
-      price: p.price,
-      offerPrice: p.price,
-      discountPercent: 0,
-      savings: 0,
-      discount_enabled: p.discount_enabled === true,
-      discount_max_percent: p.discount_max_percent ?? null,
-      discount_steps: (Array.isArray(p.discount_steps) ? p.discount_steps : []) as Json,
-    });
+  for (const p of pool) {
+    if (currentCategory && normalizeCatalogText(p.category ?? "") === currentCategory) {
+      sameCategory.push(p);
+      continue;
+    }
+    const hasSharedTag = currentTags.size > 0 && (p.tags ?? []).some((t) => currentTags.has(normalizeCatalogText(t)));
+    if (hasSharedTag) {
+      sharesTag.push(p);
+      continue;
+    }
+    rest.push(p);
   }
 
-  return out;
+  sameCategory.sort(byCreatedAtDesc);
+  sharesTag.sort(byCreatedAtDesc);
+  rest.sort(byCreatedAtDesc);
+
+  const ranked = [...sameCategory, ...sharesTag, ...rest].slice(0, max);
+
+  // Sin oferta: se sugiere y se agrega siempre a precio de lista. La imagen
+  // real se pasa tal cual (sin sufijos artificiales tipo "-opt.webp"); si la
+  // carga falla, la tarjeta muestra un placeholder (ver ProductClient).
+  return ranked.map((p) => ({
+    id: p.id,
+    slug: p.slug,
+    name: p.name,
+    image: safeUpsellImage(p.images?.[0] ?? ""),
+    price: p.price,
+    offerPrice: p.price,
+    discountPercent: 0,
+    savings: 0,
+    discount_enabled: p.discount_enabled === true,
+    discount_max_percent: p.discount_max_percent ?? null,
+    discount_steps: (Array.isArray(p.discount_steps) ? p.discount_steps : []) as Json,
+  }));
 }

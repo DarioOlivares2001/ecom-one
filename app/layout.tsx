@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { buildThemeCssProperties } from "@/lib/store-settings/buildThemeCssProperties";
 import { getStoreSettings } from "@/lib/store-settings/getStoreSettings";
 import { getPublicSiteUrl } from "@/lib/site-url";
 import { FONT_VARIABLE_CLASSNAME } from "@/lib/fonts/registry";
@@ -28,31 +27,20 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
+/**
+ * Las variables CSS del tema de la tienda (`--color-*`/`--brand-*`) NO se
+ * inyectan acá: `<body>` envuelve tanto el storefront como `/admin/*`, y
+ * `/admin/configuracion` en particular usa esas mismas variables en sus
+ * propios inputs — un preset oscuro terminaría recoloreando la UI de admin.
+ * En vez de eso, `app/(store)/layout.tsx` las aplica en un wrapper que solo
+ * envuelve las rutas de tienda (ver ese archivo).
+ */
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  const settingsPromise = getStoreSettings();
-
   return (
     <html lang="es">
-      <BodyWithTheme settingsPromise={settingsPromise}>{children}</BodyWithTheme>
+      <body className={`${FONT_VARIABLE_CLASSNAME} antialiased`}>{children}</body>
     </html>
-  );
-}
-
-async function BodyWithTheme({
-  settingsPromise,
-  children,
-}: {
-  settingsPromise: ReturnType<typeof getStoreSettings>;
-  children: React.ReactNode;
-}) {
-  const settings = await settingsPromise;
-  const themeVars = buildThemeCssProperties(settings);
-
-  return (
-    <body style={themeVars} className={`${FONT_VARIABLE_CLASSNAME} antialiased`}>
-      {children}
-    </body>
   );
 }

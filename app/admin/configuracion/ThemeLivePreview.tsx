@@ -16,9 +16,20 @@ type Palette = {
   surface: string;
   text: string;
   border: string;
+  navbarBackground: string;
+  navbarText: string;
+  footerBackground: string;
+  footerText: string;
 };
 
-function getThemeFromPreset(preset: string): Palette {
+/**
+ * Espejo de `getPresetThemePalette` en
+ * `lib/store-settings/buildThemeCssProperties.ts` — mismos presets, mismos
+ * valores. Se mantiene sincronizado a mano (mismo patrón ya usado antes de
+ * este cambio); si un preset se agrega o cambia en un lado, debe replicarse
+ * acá para que el preview no diverja de lo que realmente se guarda.
+ */
+export function getThemeFromPreset(preset: string): Palette {
   switch (preset) {
     case "minimal_black":
       return {
@@ -28,6 +39,10 @@ function getThemeFromPreset(preset: string): Palette {
         surface: "#FFFFFF",
         text: "#111111",
         border: "#E5E7EB",
+        navbarBackground: "#FFFFFF",
+        navbarText: "#111111",
+        footerBackground: "#111111",
+        footerText: "#FFFFFF",
       };
     case "premium_dark":
       return {
@@ -37,6 +52,10 @@ function getThemeFromPreset(preset: string): Palette {
         surface: "#121726",
         text: "#E5E7EB",
         border: "#283042",
+        navbarBackground: "#090B12",
+        navbarText: "#E5E7EB",
+        footerBackground: "#05070C",
+        footerText: "#E5E7EB",
       };
     case "natural_green":
       return {
@@ -46,6 +65,10 @@ function getThemeFromPreset(preset: string): Palette {
         surface: "#FFFFFF",
         text: "#1F2937",
         border: "#D9E6D2",
+        navbarBackground: "#FFFFFF",
+        navbarText: "#1F2937",
+        footerBackground: "#14532D",
+        footerText: "#F0FDF4",
       };
     case "pastel":
       return {
@@ -55,6 +78,75 @@ function getThemeFromPreset(preset: string): Palette {
         surface: "#FFFFFF",
         text: "#334155",
         border: "#F1DDF0",
+        navbarBackground: "#FFFFFF",
+        navbarText: "#334155",
+        footerBackground: "#F1DDF0",
+        footerText: "#334155",
+      };
+    case "natural_wellness":
+      return {
+        primary: "#2F5233",
+        accent: "#8A9B68",
+        background: "#FBF6EC",
+        surface: "#FFFFFF",
+        text: "#2B2B22",
+        border: "#E4DCC8",
+        navbarBackground: "#FBF6EC",
+        navbarText: "#2B2B22",
+        footerBackground: "#223526",
+        footerText: "#F3EFE1",
+      };
+    case "tech_night":
+      return {
+        primary: "#111827",
+        accent: "#22D3EE",
+        background: "#0B0F14",
+        surface: "#151A21",
+        text: "#E5E7EB",
+        border: "#262D38",
+        navbarBackground: "#0B0F14",
+        navbarText: "#E5E7EB",
+        footerBackground: "#05070A",
+        footerText: "#93C5FD",
+      };
+    case "warm_home":
+      return {
+        primary: "#C97B4A",
+        accent: "#8B5E3C",
+        background: "#FBF3E7",
+        surface: "#FFFFFF",
+        text: "#4A3728",
+        border: "#E8D9C5",
+        navbarBackground: "#FBF3E7",
+        navbarText: "#4A3728",
+        footerBackground: "#4A3728",
+        footerText: "#FBF3E7",
+      };
+    case "editorial_minimal":
+      return {
+        primary: "#18181B",
+        accent: "#7C6A58",
+        background: "#FFFFFF",
+        surface: "#FAFAFA",
+        text: "#18181B",
+        border: "#E4E4E7",
+        navbarBackground: "#FFFFFF",
+        navbarText: "#18181B",
+        footerBackground: "#18181B",
+        footerText: "#FFFFFF",
+      };
+    case "dynamic_offer":
+      return {
+        primary: "#EF4444",
+        accent: "#FACC15",
+        background: "#FFFFFF",
+        surface: "#FFFFFF",
+        text: "#111111",
+        border: "#111111",
+        navbarBackground: "#111111",
+        navbarText: "#FFFFFF",
+        footerBackground: "#111111",
+        footerText: "#FFFFFF",
       };
     case "deep_violet":
     default:
@@ -65,9 +157,27 @@ function getThemeFromPreset(preset: string): Palette {
         surface: "#FFFFFF",
         text: "#1F2933",
         border: "#E5E7EB",
+        navbarBackground: "#FFFFFF",
+        navbarText: "#1F2933",
+        footerBackground: "#111111",
+        footerText: "#FFFFFF",
       };
   }
 }
+
+export const THEME_PRESET_DESCRIPTIONS: Record<string, string> = {
+  minimal_black: "Blanco y negro sobrio, de propósito general.",
+  deep_violet: "Violeta profundo — identidad neutra por defecto.",
+  premium_dark: "Oscuro premium con acento lavanda.",
+  natural_green: "Verde y blanco, tono natural genérico.",
+  pastel: "Tonos pastel suaves, delicado.",
+  natural_wellness: "Verde profundo y crema cálido — ideal para suplementos, autocuidado y salud.",
+  tech_night: "Grafito/negro con azul eléctrico o cian — ideal para gadgets, accesorios y electrónica.",
+  warm_home: "Marfil, terracota suave y café — ideal para cocina, decoración y hogar.",
+  editorial_minimal: "Blanco, negro y gris cálido con un acento sobrio — ideal para catálogos generales o premium.",
+  dynamic_offer: "Alto contraste y CTA energético — ideal para testeo de productos y venta directa.",
+  custom: "Colores 100% definidos a mano, sin preset.",
+};
 
 function safeNumber(value: string, fallback: number) {
   const n = Number(value);
@@ -155,15 +265,22 @@ export function ThemeLivePreview({ formId, initial }: ThemeLivePreviewProps) {
       surface: useManual ? current.surface_color : preset.surface,
       text: useManual ? current.text_color : preset.text,
       border: useManual ? current.border_color : preset.border,
+      navbarBackground: useManual ? current.navbar_background_color : preset.navbarBackground,
+      navbarText: useManual ? current.navbar_text_color : preset.navbarText,
+      footerBackground: preset.footerBackground,
+      footerText: preset.footerText,
     };
   }, [current]);
+
+  const presetDescription =
+    THEME_PRESET_DESCRIPTIONS[current.theme_preset] ?? "Preset personalizado.";
 
   const headingFontVar = resolveFontCssVar(current.font_heading, "var(--font-display)");
   const bodyFontVar = resolveFontCssVar(current.font_body, "var(--font-sans)");
 
   const brandColor = current.brand_text_color || palette.primary;
-  const navBg = current.navbar_background_color || palette.surface;
-  const navText = current.navbar_text_color || palette.text;
+  const navBg = palette.navbarBackground || palette.surface;
+  const navText = palette.navbarText || palette.text;
   const logoSrc = current.logo_url || current.logo_square_url;
   const showLogo = current.branding_mode === "logo" || current.branding_mode === "logo_and_text";
   const showText =
@@ -173,6 +290,9 @@ export function ThemeLivePreview({ formId, initial }: ThemeLivePreviewProps) {
     <div className="mb-5 rounded-lg border border-zinc-200 bg-zinc-50 p-4">
       <h2 className="text-sm font-semibold text-zinc-800">Preview en vivo</h2>
       <p className="mt-1 text-xs text-zinc-500">Se actualiza mientras editas, sin guardar.</p>
+      <p className="mt-2 rounded-md bg-white px-3 py-2 text-xs text-zinc-600 ring-1 ring-inset ring-zinc-200">
+        {presetDescription}
+      </p>
 
       <div
         className="mt-3 overflow-hidden rounded-lg border"
@@ -245,6 +365,14 @@ export function ThemeLivePreview({ formId, initial }: ThemeLivePreviewProps) {
               $19.990
             </p>
           </div>
+        </div>
+
+        <div
+          className="flex items-center justify-between px-4 py-2.5 text-[11px]"
+          style={{ backgroundColor: palette.footerBackground, color: palette.footerText }}
+        >
+          <span>Footer</span>
+          <span className="opacity-70">© {current.store_name}</span>
         </div>
       </div>
     </div>

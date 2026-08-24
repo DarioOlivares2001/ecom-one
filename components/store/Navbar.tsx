@@ -10,6 +10,7 @@ import {
   dispatchClienteSessionChanged,
 } from "@/lib/cuenta/session-events";
 import type { StoreSettingsView } from "@/lib/store-settings/getStoreSettings";
+import { computeThemePaint } from "@/lib/store-settings/buildThemeCssProperties";
 
 type Slot = "left" | "center" | "right";
 
@@ -174,8 +175,9 @@ export function Navbar({ settings }: { settings: StoreSettingsView }) {
   const hasLogo = Boolean(logoSrc);
   const showText = mode === "text" || mode === "logo_and_text" || !hasLogo;
   const brandTextSize = "calc(1.25rem * var(--brand-scale, 1))";
-  const navbarBgColor = settings.navbar_background_color || "var(--color-surface)";
-  const navbarTextColor = settings.navbar_text_color || "var(--color-text)";
+  const paint = computeThemePaint(settings);
+  const navbarBgColor = paint.navbarBackground || "var(--color-surface)";
+  const navbarTextColor = paint.navbarText || "var(--color-text)";
   const brandTextColor = settings.brand_text_color || "var(--brand-primary)";
 
   const brand = (

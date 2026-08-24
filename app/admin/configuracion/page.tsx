@@ -79,6 +79,11 @@ async function saveSettingsAction(formData: FormData): Promise<{ error?: string;
     "premium_dark",
     "natural_green",
     "pastel",
+    "natural_wellness",
+    "tech_night",
+    "warm_home",
+    "editorial_minimal",
+    "dynamic_offer",
     "custom",
   ].includes(themePreset)
     ? themePreset
@@ -248,6 +253,11 @@ export default async function ConfiguracionPage() {
               <option value="premium_dark">Premium oscuro</option>
               <option value="natural_green">Natural/verde</option>
               <option value="pastel">Pastel</option>
+              <option value="natural_wellness">Bienestar natural</option>
+              <option value="tech_night">Tecnología nocturna</option>
+              <option value="warm_home">Hogar cálido</option>
+              <option value="editorial_minimal">Editorial minimal</option>
+              <option value="dynamic_offer">Oferta dinámica</option>
               <option value="custom">Custom (manual)</option>
             </select>
           </label>

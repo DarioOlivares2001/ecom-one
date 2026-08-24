@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Instagram, Music2, ShieldCheck } from "lucide-react";
 import type { StoreSettingsView } from "@/lib/store-settings/getStoreSettings";
+import { computeThemePaint } from "@/lib/store-settings/buildThemeCssProperties";
 
 type FooterNavLink = {
   label: string;
@@ -32,8 +33,9 @@ export function Footer({ settings }: { settings: StoreSettingsView }) {
   const tiktokUrl = settings.support_tiktok || "https://tiktok.com";
   const whatsappPhone = settings.support_whatsapp || "56900000000";
   const whatsappHref = `https://wa.me/${whatsappPhone.replace(/[^\d]/g, "")}`;
-  const footerBg = settings.footer_background_color || "#111111";
-  const footerText = settings.footer_text_color || "#FFFFFF";
+  const paint = computeThemePaint(settings);
+  const footerBg = paint.footerBackground || "#111111";
+  const footerText = paint.footerText || "#FFFFFF";
 
   return (
     <footer style={{ backgroundColor: footerBg, color: footerText }}>

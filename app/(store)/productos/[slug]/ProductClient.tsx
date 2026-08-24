@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useMemo } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Star,
@@ -395,7 +396,7 @@ export function ProductClient({ product, reviews, variants, upsellSuggestions = 
     [cartItems]
   );
   const visibleUpsells = useMemo(
-    () => upsellSuggestions.filter((s) => !cartProductIds.has(s.id)).slice(0, 6),
+    () => upsellSuggestions.filter((s) => !cartProductIds.has(s.id)).slice(0, 4),
     [upsellSuggestions, cartProductIds]
   );
 
@@ -837,9 +838,10 @@ export function ProductClient({ product, reviews, variants, upsellSuggestions = 
 
           <div className="mt-4 flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {visibleUpsells.map((s) => (
-              <div
+              <Link
                 key={s.id}
-                className="w-[152px] min-w-[152px] shrink-0 snap-start rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-2.5 shadow-sm sm:w-[200px] sm:min-w-[200px] lg:w-[220px] lg:min-w-[220px]"
+                href={`/productos/${s.slug}`}
+                className="block w-[152px] min-w-[152px] shrink-0 snap-start rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-2.5 shadow-sm transition-shadow hover:shadow-md sm:w-[200px] sm:min-w-[200px] lg:w-[220px] lg:min-w-[220px]"
               >
                 <div className="flex h-full flex-col gap-2">
                   <UpsellThumb src={s.image} alt={s.name} />
@@ -865,13 +867,17 @@ export function ProductClient({ product, reviews, variants, upsellSuggestions = 
                   </div>
                   <button
                     type="button"
-                    onClick={() => handleAddSuggestion(s)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleAddSuggestion(s);
+                    }}
                     className="mt-1 inline-flex h-8 w-full items-center justify-center rounded-full border border-transparent [background:var(--brand-gradient)] px-3 text-xs font-bold text-white transition-transform duration-150 active:scale-[0.97]"
                   >
                     {addedSuggestionId === s.id ? "Agregado" : "Agregar"}
                   </button>
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
         </section>

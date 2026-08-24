@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { ensureStoreSettingsRowExists, getStoreSettingsRow } from "@/lib/db/repositories/storeSettings";
 import type { StoreSettings } from "@/lib/db/types";
 
@@ -327,7 +328,13 @@ async function ensureStoreSettingsRow(): Promise<StoreSettings> {
   return row;
 }
 
-export async function getStoreSettings(): Promise<StoreSettingsView> {
+/**
+ * `cache()` de React deduplica llamadas dentro del mismo request de
+ * servidor (RSC) — root layout, (store)/layout y cualquier página que la
+ * llamen dentro de la misma navegación comparten una sola lectura a Neon en
+ * vez de una por cada `await getStoreSettings()`.
+ */
+export const getStoreSettings = cache(async function getStoreSettings(): Promise<StoreSettingsView> {
   try {
     const data = await getStoreSettingsRow();
     if (data) return normalizeSettings(data);
@@ -340,4 +347,4 @@ export async function getStoreSettings(): Promise<StoreSettingsView> {
     console.error("[store_settings] Excepción leyendo configuración:", error);
     return DEFAULT_STORE_SETTINGS;
   }
-}
+});

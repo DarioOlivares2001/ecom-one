@@ -1,4 +1,4 @@
-/* Valores por defecto; en runtime `app/layout.tsx` sobrescribe --color-* del tema con `buildThemeCssProperties` (incluye saneo de contraste). */
+/* Valores por defecto; en runtime `app/(store)/layout.tsx` sobrescribe las variables de color y de navbar/footer del tema con `buildThemeCssProperties` (incluye saneo de contraste), solo dentro del storefront — /admin no los hereda. */
 :root {
   --color-primary: #000000;
   --color-primary-hover: #1a1a1a;
@@ -10,6 +10,7 @@
   --color-border: #E5E7EB;
   --color-success: #10B981;
   --color-error: #EF4444;
+  --color-badge: #FF385C;
 
   --font-sans: 'Inter', system-ui, sans-serif;
   --font-display: 'Space Grotesk', system-ui, sans-serif;
