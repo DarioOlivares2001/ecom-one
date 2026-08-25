@@ -6,6 +6,7 @@ import type { BenefitsData } from "@/lib/product/sections/types";
 
 import { SectionContainer } from "./shared/SectionContainer";
 import { getBenefitIcon } from "./shared/benefitIcons";
+import { getBenefitAccentClassName } from "./shared/benefitAccents";
 
 interface BenefitsSectionProps {
   data: BenefitsData;
@@ -36,9 +37,10 @@ export function BenefitsSection({ data }: BenefitsSectionProps) {
           />
         </div>
       )}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 sm:gap-3">
         {data.items.map((item, index) => {
           const Icon = getBenefitIcon(item.icon);
+          const accentClassName = getBenefitAccentClassName(index);
           return (
             <motion.article
               key={`${item.title}-${index}`}
@@ -47,14 +49,18 @@ export function BenefitsSection({ data }: BenefitsSectionProps) {
               viewport={{ once: true, margin: "-50px" }}
               transition={{ duration: 0.36, ease: "easeOut", delay: index * 0.04 }}
               whileHover={{ y: -2 }}
-              className="group flex items-start gap-3 rounded-[var(--radius-md)] border border-zinc-200 bg-white px-4 py-4 shadow-[0_4px_14px_rgba(0,0,0,0.04)] transition-colors hover:border-zinc-300"
+              className="group flex items-start gap-3.5 rounded-[var(--radius-md)] border border-zinc-200 bg-white px-4 py-5 shadow-[0_4px_14px_rgba(0,0,0,0.04)] transition-colors hover:border-zinc-300 sm:gap-3 sm:py-4"
             >
-              <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-gradient text-white shadow-sm">
-                <Icon className="h-4 w-4" aria-hidden />
+              <span
+                className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white shadow-sm sm:h-9 sm:w-9 ${accentClassName}`}
+              >
+                <Icon className="h-5 w-5 sm:h-4 sm:w-4" aria-hidden />
               </span>
               <div className="min-w-0">
-                <p className="text-sm font-semibold leading-snug text-zinc-900">{item.title}</p>
-                <p className="mt-1 text-xs leading-relaxed text-zinc-600 sm:text-[13px]">
+                <p className="text-[15px] font-semibold leading-snug text-zinc-900 sm:text-sm">
+                  {item.title}
+                </p>
+                <p className="mt-1 text-[13px] leading-relaxed text-zinc-600">
                   {item.description}
                 </p>
               </div>

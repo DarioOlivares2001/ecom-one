@@ -14,6 +14,21 @@
   --color-countdown-bg: #FF385C;
   --color-countdown-text: #FFFFFF;
 
+  /*
+   * Paleta rotativa para el círculo/icono de cada tarjeta del bloque
+   * "Beneficios" (verde, azul, violeta, ámbar) — deliberadamente NO
+   * derivada de --color-primary/--color-accent: su propósito es que cada
+   * tarjeta se distinga entre sí, no reforzar el color de marca. Global,
+   * no por preset — cualquier tema/preset (incluidos conversion-general y
+   * wellness-supplements) cae de forma segura en estos mismos 4 valores;
+   * son suficientemente saturados para que un icono blanco encima siempre
+   * tenga contraste legible.
+   */
+  --benefit-accent-1: #059669;
+  --benefit-accent-2: #2563EB;
+  --benefit-accent-3: #7C3AED;
+  --benefit-accent-4: #D97706;
+
   --font-sans: 'Inter', system-ui, sans-serif;
   --font-display: 'Space Grotesk', system-ui, sans-serif;
 
